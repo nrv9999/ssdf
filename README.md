@@ -67,6 +67,26 @@ Handling errors: errors handles as excluded from flow points.
 - `_excls` - points, to be excluded from executing data flow.
 - `_use_rep_dttm bool` - use rep date for calculating dependecies (if false, it will be considered only dependencies, runned in the batch.
 
+Point types\
+\"P\" - procedure. It works as call \_source\_(id_batch)\
+\"V\" - view. It works as insert into dest select from view in source. Column names of view must match dest.\
+\"StrtP\" - starting procedure. It suppose to use for waiting a source and generating rep date.\
+Call looks like:
+```
+call dwh.usp_sa_wait_contact_collection_event(28, 21, ('contact.collection_event', 'f  ')::df.point)
+```
+Content (excluding waiting) should be:
+```
+create or replace procedure dwh.usp_sa_wait_contact_collection_event(in _id_batch bigint, in _id int, in _p df.point)
+as $$
+begin
+insert into df.flow_rep_dttm_clc (id_batch, p, id, dttm, rep_id)
+select _id_batch, _p, _id, CURRENT_TIMESTAMP, null;
+end
+$$ LANGUAGE plpgsql;
+```
+so, as you see procedure should insert apropriate REP DATE in special table.
+
 ### examples
 adding horizon:
 ```
