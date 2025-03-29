@@ -38,7 +38,15 @@ So, we going to execution of data flow and appropriate procedures.\
 `df.exec_id(in _id_batch bigint, in _id int, out _strt_dt timestamp)` - procedure, which executes given point of data flow. It called when executing a flow and it can be called when you test created point in development.
 Speaking about this procedure, it necessary to tell about:\
 - `select * from df.exec_log el order by startdate desc;` - log of SQL code execution of this procedure
-- types of points of data flow. Now realized several points: "V" - view, "P" - procedure, "StrtP" - procedure, starting the flow and generating first rep date. About types will be separate paragraph.
-
+- types of points of data flow. Now realized several points: "V" - view, "P" - procedure, "StrtP" - procedure, starting the flow and generating first rep date. About types will be separate paragraph.\
+\
+`df.exec_flow(in _mode varchar(100), in _procs varchar(100)[] default null
+	, in _start_ids int[] default null, in _dests df.point[] default null, in _excls df.point[] default null, in _use_rep_dttm bool default true)` - main procedure, that's executes a data flow. As you can see, it has many parameters:
+- `_mode` - "strict" or "full". Difference between then is in what in "strict" mode point is executed when all od it dependencies are executed in current batch (or have newer rep date) and in "full" mode only one dependencie (executed or has newer rep date) is enough.
+- `_procs` - array of names of processes. Process, here (in tool) is conditional way for separate different workload, but by default, data flow consider at all. So, if it null, data flow consider at all, if it given, data flow limits by given processes.
+- `_start_ids`. If it null, data flow starts by points having no dependencies, if it given - by then.
+- `_dests` - destinations, that is will not generate data flow after them.
+- `_excls` - points, to be excluded from executing data flow.
+- `_use_rep_dttm bool` - use rep date for calculating dependecies (if false, it will be considered only dependencies, runned in the batch.
 
 
