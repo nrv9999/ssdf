@@ -28,6 +28,8 @@ so, we have table for describing SQL data flow:\
 ```select * from df.flow```\
 If you want to do changes in flow, you should directly insert/update to `df.flow`.\
 \
+and horizon table `df.horizon` (for now, only ddtm's is functional)\
+\
 Also, as you can see, tool have one mini feature - tier of the point of data flow. What is this?\
 For example, you have big table, which builds for many stages. Tier of the point uses special type - `df.point` - with 2 fields - name of table and building stage of it. So, you can address each stage of building of the table for further using it as dependencie. If you want address final stage, use "f" (only in dependencies, in targets you only use numbers, because "f" calculates at moment (as last existing stage).\
 \
@@ -41,7 +43,11 @@ view has following calculated fields:
 - `vw_ordr_max` - last number, at that point can be executed.
 
 So we can see, order of execution is undefined. On the idea, it resolves at moment of execution by the available resources. Also degree of parallelism defines by available resources - view have no limit for parallelism.\
-Also we have `priority` field, that directly used for calculating order. By the resource limitation, we consider limited number of points at each stage of execution, and; at each stage we prefer more prior points (from available) for execution. 
+Also we have `priority` field, that directly used for calculating order. By the resource limitation, we consider limited number of points at each stage of execution, and; at each stage we prefer more prior points (from available) for execution.\
+\
+Dynamic parallelism based on available resources.\
+For now, it is not realized - available resources are infinitly. But realized structure for - it is needed to wrote content of functions `df.get_for_resource` and `df.wait_for_resource`.\
+So, it each stage of execution, program asked for resource for each point can be runned (and runs if get). If nothing runned program waits resource for most prior point can be runned.\
 \
 So, we going to execution of data flow and appropriate procedures.\
 \
@@ -60,6 +66,41 @@ Handling errors: errors handles as excluded from flow points.
 - `_dests` - destinations, that is will not generate data flow after them.
 - `_excls` - points, to be excluded from executing data flow.
 - `_use_rep_dttm bool` - use rep date for calculating dependecies (if false, it will be considered only dependencies, runned in the batch.
-\
+
+### examples
+adding horizon:
+```
+insert into df.horizon (name, dttm, dttm_end, dttm_type, id, id_end)
+select 'Collection', '2025-01-01', null, 'DTTM', null, null;
+```
+adding point of dataflow:
+```
+insert into df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
+select 'StrtP', 'Collection', null, null, 100, 'dwh.usp_sa_wait_contact_collection_event', 'contact.collection_event'
+	, 1, null, null;
+```
+executing point:
+```
+do $$
+declare _d timestamp;
+begin
+call df.exec_id(0, 25, _d);
+end
+$$;
+```
+executing flow:
+```
+--full flow in strict mode
+call df.exec_flow('strict');
+--full flow in full mode
+call df.exec_flow('full');
+--full flow starting from point id=4 in strict mode
+call df.exec_flow('strict', null, array[4], null); 
+--process "Collection" in full mode
+call df.exec_flow('full', array['Collection']);
+--process "Collection" in strict mode
+call df.exec_flow('strict', array['Collection']);
+```
+
 
 
