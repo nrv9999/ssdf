@@ -1,7 +1,7 @@
 # ssdf
 ## super SQL data flow
 
-tool/framework for realization of the SQL data flow, also based on SQL. It uses PostgreSQL.
+tool/framework for realization of the SQL data flow (ETL), also based on SQL. It uses PostgreSQL.
 
 ### Requirements
 postgres extensions:\
