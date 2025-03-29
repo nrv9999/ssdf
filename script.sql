@@ -53,11 +53,11 @@ select 'StrtP', 'Collection', null, null, 100, 'dwh.usp_sa_wait_contact_debt', '
 
 
 insert into df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
-select 'V', 'Collection', 'Collection', array[('contact.collection_event', 'f')::df.point], 100
+select 'SA', 'Collection', 'Collection', array[('contact.collection_event', 'f')::df.point], 100
 	, 'contact.collection_event', 'dwh.sa_collection_event', 1, 'dt', null;
 
 insert into df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
-select 'V', 'Collection', 'Collection', array[('contact.debt', 'f')::df.point], 100
+select 'SA', 'Collection', 'Collection', array[('contact.debt', 'f')::df.point], 100
 	, 'contact.debt', 'dwh.sa_debt', 1, null, null;
 
 insert into df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
@@ -367,7 +367,12 @@ ELSIF _type = 'V' then
 	WHERE table_name = split_part(_dest."name", '.', -1) and table_schema = split_part(_dest."name", '.', -2) 
 		and column_name not in ('id_batch', 'loaddate', 'update_dttm', 'rep_date');
 
-	_cmd = FORMAT('insert into %s(%s%s%s%s%s)
+	_cmd = FORMAT('delete from %s
+where %s between %s and %s;', _dest."name", _cond_col, (select '''' || coalesce(dttm, '1900-01-01')::text || '''' from df.horizon where "name" = _horizon)
+	, (select '''' || coalesce(dttm_end, '2220-01-01')::text || '''' from df.horizon where "name" = _horizon)) || '
+
+' 
+		|| FORMAT('insert into %s(%s%s%s%s%s)
 select %s%s%s%s%s
 from %s
 where %s between %s and %s;', _dest."name", case when _dest_id_batch then 'id_batch, ' else '' end, case when _dest_loadDate then 'LoadDate, ' else '' end
@@ -379,7 +384,7 @@ where %s between %s and %s;', _dest."name", case when _dest_id_batch then 'id_ba
 	, _cond_col, (select '''' || coalesce(dttm, '1900-01-01')::text || '''' from df.horizon where "name" = _horizon)
 	, (select '''' || coalesce(dttm_end, '2220-01-01')::text || '''' from df.horizon where "name" = _horizon));
 else
-	_cmd = 'perform pg_sleep(random()*(10-1)+1)';
+	_cmd = 'select pg_sleep(random()*(10-1)+1);';
 end if;
 
 insert into df.exec_log (id_batch, id, startdate, executed, command)
