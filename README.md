@@ -26,7 +26,7 @@ how it looks:\
 ### description
 so, we have table for describing SQL data flow:\
 ```select * from df.flow```\
-If you want to do changes in flow, you should dirictly insert/update to `df.flow`.\
+If you want to do changes in flow, you should directly insert/update to `df.flow`.\
 \
 Also, as you can see, tool have one mini feature - tier of the point of data flow. What is this?\
 For example, you have big table, which builds for many stages. Tier of the point uses special type - `df.point` - with 2 fields - name of table and building stage of it. So, you can address each stage of building of the table for further using it as dependencie. If you want address final stage, use "f" (only in dependencies, in targets you only use numbers, because "f" calculates at moment (as last existing stage).\
