@@ -24,8 +24,10 @@ how it looks:\
 ![ssdf](https://github.com/nrv9999/ssdf/blob/main/screenshot_dataflow.png)
 
 ### description
-so, we have table for describing SQL data flow:\
-```select * from df.flow```\
+so, we have table for describing SQL data flow:
+```sql
+select * from df.flow
+```
 If you want to do changes in flow, you should directly insert/update to `df.flow`.\
 \
 and horizon table `df.horizon` (for now, only ddtm's is functional)\
@@ -36,7 +38,9 @@ For example, you have big table, which builds for many stages. Tier of the point
 In tool, presents one thing - rep date. Each point when executing, rep date calculating for. It uses for information, and, for calculating points of dataflow will executed (further will be about). See table `df.flow_rep_dttm`. Also presents table `df.flow_rep_dttm_clc`, for calculating rep date in cases when one stage of destination calculating with multiple points.\
 \
 and we have a view, calculating order of executing data flow:
-```select * from df.vw_flow;```\
+```sql
+select * from df.vw_flow;
+```
 view has following calculated fields:
 - `dest_tier_f` - replaces value of dest_tier by "f" if it last point(s) for building destination.
 - `vw_ordr` - first number, at that point can be already executed.
@@ -72,11 +76,11 @@ Point types\
 \"V\" - view. It works as insert into dest select from view in source. Column names of view must match dest.\
 \"StrtP\" - starting procedure. It suppose to use for waiting a source and generating rep date.\
 Call looks like:
-```
+```sql
 call dwh.usp_sa_wait_contact_collection_event(28, 21, ('contact.collection_event', 'f  ')::df.point)
 ```
 Content (excluding waiting) should be:
-```
+```sql
 create or replace procedure dwh.usp_sa_wait_contact_collection_event(in _id_batch bigint, in _id int, in _p df.point)
 as $$
 begin
@@ -89,18 +93,18 @@ so, as you see procedure should insert apropriate REP DATE in special table.
 
 ### examples
 adding horizon:
-```
+```sql
 insert into df.horizon (name, dttm, dttm_end, dttm_type, id, id_end)
 select 'Collection', '2025-01-01', null, 'DTTM', null, null;
 ```
-adding point of dataflow:
-```
+adding point of data flow:
+```sql
 insert into df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
 select 'StrtP', 'Collection', null, null, 100, 'dwh.usp_sa_wait_contact_collection_event', 'contact.collection_event'
 	, 1, null, null;
 ```
 executing point:
-```
+```sql
 do $$
 declare _d timestamp;
 begin
@@ -109,7 +113,7 @@ end
 $$;
 ```
 executing flow:
-```
+```sql
 --full flow in strict mode
 call df.exec_flow('strict');
 --full flow in full mode
