@@ -94,7 +94,7 @@ so, as you see, procedure should insert apropriate REP DATE in special table.\
 some internals\
 declared procedure `df.exec_flow` uses proc `df.exec_batch_from_id` for each runned point and generates content of table `df.batch_log` for current batch.\
 In table `df.batch_log` wrotes all data flow planned to run in batch.\
-In case when `df.exec_batch_from_id` see the error in runned code - it disables all related points of data flow (according to load mode  politics - strict or full).\
+In case when `df.exec_batch_from_id` see the error in runned code - it disables all related points of data flow (according to load mode  politics - strict or full).
 
 ### examples
 adding horizon:
