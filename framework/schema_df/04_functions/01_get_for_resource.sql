@@ -1,0 +1,7 @@
+CREATE OR REPLACE FUNCTION df.get_for_resource(_id INT)
+RETURNS BOOLEAN
+AS $$
+BEGIN
+    RETURN true;
+END;
+$$ LANGUAGE plpgsql;

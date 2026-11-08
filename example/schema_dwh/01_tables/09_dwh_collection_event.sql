@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS dwh.dwh_collection_event CASCADE;
+
+CREATE TABLE dwh.dwh_collection_event (
+    id_batch BIGINT NOT NULL,
+    LoadDate TIMESTAMP NOT NULL,
+    REP_DATE TIMESTAMP NOT NULL,
+    RK BIGINT NOT NULL,
+    DEBT_RK BIGINT NOT NULL,
+    DTTM TIMESTAMP NOT NULL,
+    comm TEXT
+);
