@@ -1,130 +1,125 @@
-DROP PROCEDURE IF EXISTS df.exec_flow;
+DROP PROCEDURE IF EXISTS df.exec_flow(varchar, varchar[], int[], df.point[], df.point[], bool);
 
-CREATE OR REPLACE PROCEDURE df.exec_flow(
-    IN _mode VARCHAR(100),
-    IN _procs VARCHAR(100)[] DEFAULT NULL,
-    IN _start_ids INT[] DEFAULT NULL,
-    IN _dests df.point[] DEFAULT NULL,
-    IN _excls df.point[] DEFAULT NULL,
-    IN _use_rep_dttm BOOLEAN DEFAULT TRUE
-)
-AS $$
+create or replace procedure df.exec_flow(in _mode varchar(100), in _procs varchar(100)[] default null
+	, in _start_ids int[] default null, in _dests df.point[] default null, in _excls df.point[] default null, in _use_rep_dttm bool default true)
+as $$
 DECLARE
-    _r RECORD;
-    _i INT := 1;
-    _rowcount INT;
-    _id_batch BIGINT;
-    _stf TEXT;
-    _stfi BIGINT;
-BEGIN
-    IF _mode NOT IN ('full', 'strict') THEN
-        RAISE EXCEPTION 'mode could be only full and strict';
-    END IF;
+    _r record;
+	--b bool;
+	_i int = 1;
+	_rowcount int;
+	_id_batch bigint;
+	_stf text;
+	_stfi bigint;
+begin
 
-    DROP TABLE IF EXISTS f CASCADE;
-    DROP TABLE IF EXISTS f2 CASCADE;
+if _mode not in ('full', 'strict') then
+	raise exception 'mode could be only full and strict';
+end if;
 
-    -- Get start points
-    CREATE TEMP TABLE f AS
-    SELECT *
-    FROM df.vw_flow_1
-    WHERE (_procs IS NULL OR process IN (SELECT UNNEST(_procs)))
-      AND ((deps IS NULL AND _start_ids IS NULL) OR id IN (SELECT UNNEST(_start_ids)))
-      AND (_excls IS NULL OR ARRAY[(dest, dest_tier_f)::df.point] <@ _excls);
+drop table if exists f;
 
-    LOOP
-        -- Get next points
-        INSERT INTO f
-        SELECT f2.*
-        FROM (
-            SELECT ARRAY_AGG((f.dest, f.dest_tier_f)::df.point) AS dests
-            FROM (
-                SELECT *, COUNT(*) OVER (PARTITION BY dest, dest_tier_f) AS eff_cnt
-                FROM f
-            ) f
-            WHERE (_dests IS NULL OR NOT (ARRAY[(f.dest, f.dest_tier_f)::df.point] <@ _dests))
-                AND (_mode = 'full' OR (_mode = 'strict' AND f.eff_cnt =
-                    (SELECT cnt FROM (
-                        SELECT *, COUNT(*) OVER (PARTITION BY dest, dest_tier_f) AS cnt
-                        FROM df.vw_flow_1 fr
-                    ) fr WHERE fr.id = f.id)))
-        ) fa
-        JOIN df.vw_flow_1 f2 ON (
-            (_mode = 'strict' AND (
-                SELECT ARRAY_AGG(p)
-                FROM (
-                    SELECT UNNEST(fa.dests) AS p
-                    UNION ALL
-                    (SELECT p FROM df.flow_rep_dttm rd WHERE _use_rep_dttm AND rd.dttm
-                     > (SELECT dttm FROM df.flow_rep_dttm rd2 WHERE rd2.p = (f2.dest, f2.dest_tier_f)::df.point))
-                ) sub
-            ) @> f2.deps)
-            OR (_mode = 'full' AND EXISTS (
-                (SELECT UNNEST(fa.dests)
-                 UNION ALL
-                 (SELECT p FROM df.flow_rep_dttm rd WHERE _use_rep_dttm AND rd.dttm
-                  > (SELECT dttm FROM df.flow_rep_dttm rd2 WHERE rd2.p = (f2.dest, f2.dest_tier_f)::df.point)))
-                INTERSECT
-                SELECT UNNEST(f2.deps)
-            ))
-        )
-        WHERE f2.id NOT IN (SELECT id FROM f)
-          AND (_procs IS NULL OR f2."process" IN (SELECT UNNEST(_procs)))
-          AND (_excls IS NULL OR ARRAY[(f2.dest, f2.dest_tier_f)::df.point] <@ _excls);
+drop table if exists f2;
 
-        GET DIAGNOSTICS _rowcount := ROW_COUNT;
-        EXIT WHEN _rowcount = 0;
-    END LOOP;
 
-    -- Get correct priority
-    CREATE TEMP TABLE f2 AS
-    SELECT f.id, v.vw_ordr, v.vw_ordr_max, v.priority
-    FROM f
-    JOIN df.vw_flow v ON v.id = f.id;
+--get start points
+create temp table f
+as
+select *
+from df.vw_flow_1
+where (_procs is null or process in (select unnest(_procs))) and ((deps is null and _start_ids is null) 
+		or id in (select unnest(_start_ids)))
+	and (_excls is null or array[(dest, dest_tier_f)::df.point] <@ _excls);
 
-    _id_batch := (SELECT COALESCE(MAX(d.id_batch), 0::BIGINT) FROM df.batch_log d) + 1;
+--raise notice '% 1st', (select count(*) from f);
 
-    -- Generate batch's work set/log
-    INSERT INTO df.batch_log (id_batch, id, vw_ordr, vw_ordr_max, priority, LoadDate)
-    SELECT _id_batch, id, vw_ordr, vw_ordr_max, priority, CURRENT_TIMESTAMP
-    FROM f2;
+loop
+	--get next points
+	insert into f
+	select f2.*
+	from
+		--start points with check that dest + dest_tier_f fully completed 
+		(select array_agg((f.dest, f.dest_tier_f)::df.point) dests 
+			from (select *, count(*) over (partition by dest, dest_tier_f) eff_cnt
+				from f) f
+			where (_dests is null or not (array[(f.dest, f.dest_tier_f)::df.point] <@ _dests))
+				and (_mode = 'full' or (_mode = 'strict' and f.eff_cnt = 
+					(select cnt from (select *, count(*) over (partition by dest, dest_tier_f) cnt
+						from df.vw_flow_1 fr) fr
+					where fr.id = f.id))
+					--or  exists (select 1 from df.flow_rep_dttm rd where rd.p = (f.dest, f.dest_tier_f)::df.point
+					--	and rd.dttm)
+			)) fa
+		join df.vw_flow_1 f2
+			on (_mode = 'strict' and (select array_agg(p) from (select unnest(fa.dests) p
+					union all
+					(select p from df.flow_rep_dttm rd where _use_rep_dttm and rd.dttm
+						> (select dttm from df.flow_rep_dttm rd2 where rd2.p = (f2.dest, f2.dest_tier_f)::df.point)))) @> f2.deps) 
+				or (_mode = 'full' and exists ((SELECT unnest(fa.dests)
+							union all
+							(select p from df.flow_rep_dttm rd where _use_rep_dttm and rd.dttm
+								> (select dttm from df.flow_rep_dttm rd2 where rd2.p = (f2.dest, f2.dest_tier_f)::df.point)))
+	    				INTERSECT
+	    				SELECT unnest(f2.deps)))
+	where f2.id not in (select id from f) and (_procs is null or f2."process" in (select unnest(_procs)))
+		and (_excls is null or array[(f2.dest, f2.dest_tier_f)::df.point] <@ _excls);
 
-    -- Print batch
-    FOR _r IN (SELECT (id, vw_ordr) FROM f2 ORDER BY vw_ordr, priority)
-    LOOP
-        RAISE NOTICE '(id,vw_ordr): %', _r;
-    END LOOP;
+	GET DIAGNOSTICS _rowcount := ROW_COUNT;
 
-    IF NOT COALESCE(array['ssdf_postgres_conn'::TEXT] <@ dblink_get_connections(), FALSE) THEN
-        SELECT dblink_connect('ssdf_postgres_conn', 'dbname=postgres') INTO _stf;
-    END IF;
+	EXIT WHEN _rowcount = 0;
 
-    -- Start executing batch from start points
-    FOR _r IN (SELECT id FROM f2 WHERE vw_ordr = (SELECT MIN(vw_ordr) FROM f2) ORDER BY priority, id)
-    LOOP
-        IF _i = 1 THEN
-            CALL df.wait_for_resource(_r.id);
-        ELSE
-            IF NOT df.get_for_resource(_r.id) THEN
-                CONTINUE;
-            END IF;
-        END IF;
+end loop;
 
-        SELECT schedule INTO _stfi
-        FROM dblink('ssdf_postgres_conn',
-            'SELECT cron.schedule_in_database(''ssdf_'' || df.find_free_job(_id_batch, _r.id)::varchar(5) || ''''',
-                ''' || EXTRACT(minute FROM CURRENT_TIMESTAMP + INTERVAL ''2 minute'')::TEXT || '' ''
-                || EXTRACT(hour FROM CURRENT_TIMESTAMP + INTERVAL ''2 minute'')::TEXT
-                || '' * * *'',
-                ''call df.exec_batch_from_id(' || _id_batch::VARCHAR(10) || ', ' || _r.id::VARCHAR(10) || '', ''''' || _mode || ''''', ' || _use_rep_dttm::VARCHAR(10) || ')'',
-                ''demo'');')
-            AS t(schedule BIGINT);
-        _i := _i + 1;
-    END LOOP;
+--get correct priority
+create temp table f2 as
+select f.id, v.vw_ordr, v.vw_ordr_max, v.priority
+from f
+	join df.vw_flow v on v.id = f.id;
 
-    DROP TABLE IF EXISTS f CASCADE;
-    DROP TABLE IF EXISTS f2 CASCADE;
+_id_batch = (select coalesce(max(d.id_batch), 0::bigint) from df.batch_log d) + 1;
 
-    COMMIT;
-END;
+--generate batch's work set/log 
+insert into df.batch_log (id_batch, id, vw_ordr, vw_ordr_max, priority, LoadDate)
+select _id_batch, id, vw_ordr, vw_ordr_max, priority, CURRENT_TIMESTAMP
+from f2;
+
+--print batch
+for _r in (select (id, vw_ordr) from f2
+	order by vw_ordr, priority)
+loop
+	raise notice '(id,vw_ordr): %', _r;
+end loop;
+
+if not coalesce(array['ssdf_postgres_conn'::text] <@ dblink_get_connections(), false) then
+		select dblink_connect('ssdf_postgres_conn', 'dbname=postgres') into _stf;
+end if;
+
+--start executing batch from start points
+for _r in (select id from f2 where vw_ordr = (select min(vw_ordr) from f2) order by priority, id)
+loop
+	if _i = 1 then
+		call df.wait_for_resource(_r.id);
+	else
+		if not df.get_for_resource(_r.id) then
+			continue;
+		end if;
+	end if;
+
+	select schedule into _stfi from dblink('ssdf_postgres_conn', 
+		'SELECT cron.schedule_in_database(''ssdf_' || df.find_free_job(_id_batch, _r.id)::varchar(5) || ''', '''
+			|| EXTRACT(minute FROM CURRENT_TIMESTAMP + interval '2 minute')::text || ' '
+				|| EXTRACT(hour FROM CURRENT_TIMESTAMP + interval '2 minute')::text 
+			||' * * *'', ''call df.exec_batch_from_id('
+			|| _id_batch::varchar(10) || ', ' || _r.id::varchar(10) || ', ''''' || _mode || ''''', ' || _use_rep_dttm::varchar(10) || ')'', ''demo'');')
+		as t(schedule bigint);
+	_i = _i + 1;
+end loop;
+
+drop table f;
+
+drop table f2;
+
+commit;
+
+end
 $$ LANGUAGE plpgsql;

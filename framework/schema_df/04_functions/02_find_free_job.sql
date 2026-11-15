@@ -1,71 +1,75 @@
-CREATE OR REPLACE FUNCTION df.find_free_job(_id_batch BIGINT, _id INT)
-RETURNS SMALLINT
-AS $$
-DECLARE
-    u INT;
-    _stf TEXT;
-    _stfi BIGINT;
-BEGIN
-    DROP TABLE IF EXISTS m;
+DROP FUNCTION IF EXISTS df.find_free_job(bigint, int);
 
-    IF NOT COALESCE(array['ssdf_postgres_conn'::TEXT] <@ dblink_get_connections(), FALSE) THEN
-        SELECT dblink_connect('ssdf_postgres_conn', 'dbname=postgres') INTO _stf;
-    END IF;
+create or replace function df.find_free_job(_id_batch bigint, _id int) returns smallint
+as $$
+declare
+u int;
+_stf text;
+_stfi bigint;
+begin
 
-    SELECT MAX(num) INTO u
-    FROM dblink('ssdf_postgres_conn',
-        'SELECT split_part(j.jobname, ''_'', 2)::smallint FROM cron.job j WHERE j.jobname LIKE ''ssdf%'';')
-    AS t(num SMALLINT);
+drop table if exists m;
 
-    CREATE TEMP TABLE m AS
-    SELECT g.*
-    FROM generate_series(1, u) g(num)
-    LEFT JOIN dblink('ssdf_postgres_conn',
-        'SELECT split_part(j.jobname, ''_'', 2)::smallint FROM cron.job j WHERE j.jobname LIKE ''ssdf%'';')
-        AS t(num SMALLINT)
-        ON t.num = g.num
-    WHERE t.num IS NULL;
+if not coalesce(array['ssdf_postgres_conn'::text] <@ dblink_get_connections(), false) then
+		select dblink_connect('ssdf_postgres_conn', 'dbname=postgres') into _stf;
+end if;
 
-    FOR u IN (SELECT num FROM m)
-    LOOP
-        SELECT schedule INTO _stfi
-        FROM dblink('ssdf_postgres_conn',
-            'SELECT cron.schedule_in_database(''ssdf_'' || u::varchar(5) || ''''', ''0 0 * * *'', ''select pg_sleep(1);'', ''demo'');')
-            AS t(schedule BIGINT);
-    END LOOP;
+select max(num) into u from dblink('ssdf_postgres_conn'
+	, 'select split_part(j.jobname, ''_'', 2)::smallint from cron.job j
+		where j.jobname like ''ssdf%'';')
+	as t(num smallint);
 
-    u = NULL;
+create temp table m as
+select g.*
+from
+	generate_series(1, u) g(num)
+	left join dblink('ssdf_postgres_conn'
+		, 'select split_part(j.jobname, ''_'', 2)::smallint from cron.job j
+			where j.jobname like ''ssdf%'';')
+		as t(num smallint)
+		on t.num = g.num
+where t.num is null;
 
-    SELECT num INTO u
-    FROM dblink('ssdf_postgres_conn',
-        'SELECT split_part(j.jobname, ''_'', 2)::smallint FROM cron.job j
-         LEFT JOIN cron.job_run_details r ON r.jobid = j.jobid AND r.status = ''running''
-         WHERE j.jobname LIKE ''ssdf%'' AND r.jobid IS NULL;')
-        AS t(num SMALLINT)
-    LEFT JOIN df.batch_log b ON b.executed = 'running' AND b.job = t.num
-    WHERE b.id_batch IS NULL
-    ORDER BY 1
-    LIMIT 1;
+for u in (select num from m)
+loop
+	select schedule into _stfi from dblink('ssdf_postgres_conn', 
+		'SELECT cron.schedule_in_database(''ssdf_' || u::varchar(5) || ''', ''0 0 * * *'', ''select pg_sleep(1);'', ''demo'');')
+		as t(schedule bigint);
+end loop;
 
-    IF u IS NULL THEN
-        SELECT num + 1 INTO u
-        FROM dblink('ssdf_postgres_conn',
-            'SELECT MAX(split_part(j.jobname, ''_'', 2)::smallint) FROM cron.job j WHERE j.jobname LIKE ''ssdf%'';')
-            AS t(num SMALLINT);
-    END IF;
+u = null;
 
-    IF u IS NULL THEN
-        u = 1;
-    END IF;
+select num into u from dblink('ssdf_postgres_conn'
+	, 'select split_part(j.jobname, ''_'', 2)::smallint from cron.job j
+			left join cron.job_run_details r on r.jobid = j.jobid and r.status = ''running''
+		where j.jobname like ''ssdf%'' and r.jobid is null;')
+		as t(num smallint)
+	left join df.batch_log b
+		on b.executed = 'running' and b.job = t.num
+where b.id_batch is null
+order by 1
+limit 1;
 
-    UPDATE df.batch_log
-    SET job = u,
-        executed = 'running',
-        startdate = CURRENT_TIMESTAMP
-    WHERE id_batch = _id_batch AND id = _id;
+if u is null then
+	select num + 1 into u from dblink('ssdf_postgres_conn'
+	, 'select max(split_part(j.jobname, ''_'', 2)::smallint) from cron.job j
+		where j.jobname like ''ssdf%'';')
+			as t(num smallint);
+end if;
 
-    DROP TABLE IF EXISTS m;
+if u is null then
+	u = 1;
+end if;
 
-    RETURN u;
-END;
+update df.batch_log
+set job = u
+	, executed = 'running'
+	, startdate = CURRENT_TIMESTAMP
+where id_batch = _id_batch and id = _id;
+
+drop table if exists m;
+
+return u;
+
+end
 $$ LANGUAGE plpgsql;
