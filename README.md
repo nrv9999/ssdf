@@ -89,7 +89,7 @@ return CURRENT_TIMESTAMP;
 end
 $$ LANGUAGE plpgsql;
 ```
-so, as you see, function should return apropriate REP DATE; `df.exec_id` stores it in `df.flow_rep_dttm`. Destination of a StrtF point is the sa-table it feeds (tier 1), the load itself is tier 2 ("f") and depends on tier 1.\
+so, as you see, function should return apropriate REP DATE; `df.exec_id` stores it in `df.flow_rep_dttm`. Destination of a StrtF point is the sa-level load procedure it feeds; the load targets the sa-table and depends on the StrtF point ("f").\
 \
 some internals\
 declared procedure `df.exec_flow` uses proc `df.exec_batch_from_id` for each runned point and generates content of table `df.batch_log` for current batch.\
@@ -105,7 +105,7 @@ select 'Collection', '2025-01-01', null, 'DTTM', null, null;
 adding point of data flow:
 ```sql
 insert into df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
-select 'StrtF', 'Collection', null, null, 100, 'dwh.uf_sa_wait_contact_collection_event', 'dwh.sa_collection_event'
+select 'StrtF', 'Collection', null, null, 100, 'dwh.uf_sa_wait_contact_collection_event', 'dwh.usp_sa_load_contact_collection_event'
 	, 1, null, null;
 ```
 executing point:
