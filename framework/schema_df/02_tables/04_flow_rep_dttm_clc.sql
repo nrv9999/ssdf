@@ -1,5 +1,7 @@
 DROP TABLE IF EXISTS df.flow_rep_dttm_clc CASCADE;
 
+-- Per-batch contributions of points to destination stages:
+-- multi-tier readiness of a destination is derived from these rows.
 CREATE TABLE df.flow_rep_dttm_clc (
     id_batch bigint,
     p df.point NOT NULL,

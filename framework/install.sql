@@ -21,6 +21,7 @@
 \i schema_df/03_views/01_vw_flow_1.sql
 \i schema_df/03_views/02_vw_flow_2.sql
 \i schema_df/03_views/03_vw_flow.sql
+\i schema_df/03_views/04_vw_dest_rep_dttm.sql
 
 \echo Installing functions...
 \i schema_df/04_functions/01_get_for_resource.sql

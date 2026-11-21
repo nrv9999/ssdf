@@ -19,9 +19,9 @@
 \echo Installing dwh views...
 \i schema_dwh/02_views/01_vw_dwh_collection_event.sql
 
-\echo Installing dwh procedures...
-\i schema_dwh/procedures/01_usp_sa_wait_contact_collection_event.sql
-\i schema_dwh/procedures/02_usp_sa_wait_contact_debt.sql
+\echo Installing dwh functions and procedures...
+\i schema_dwh/procedures/01_uf_sa_wait_contact_collection_event.sql
+\i schema_dwh/procedures/02_uf_sa_wait_contact_debt.sql
 \i schema_dwh/procedures/03_usp_sa_load_contact_collection_event.sql
 \i schema_dwh/procedures/04_usp_sa_load_contact_debt.sql
 \i schema_dwh/procedures/05_usp_srs_collection_event.sql

@@ -35,7 +35,7 @@ and horizon table `df.horizon` (for now, only ddtm's is functional)\
 Also, as you can see, tool have one mini feature - tier of the point of data flow. What is this?\
 For example, you have big table, which builds for many stages. Tier of the point uses special type - `df.point` - with 2 fields - name of table and building stage of it. So, you can address each stage of building of the table for further using it as dependencie. If you want address final stage, use "f" (only in dependencies, in targets you only use numbers, because "f" calculates at moment (as last existing stage).\
 \
-In tool, presents one thing - rep date. Each point when executing, rep date calculating for. It uses for information, and, for calculating points of dataflow will executed (further will be about). See table `df.flow_rep_dttm`. Also presents table `df.flow_rep_dttm_clc`, for calculating rep date in cases when one stage of destination calculating with multiple points.\
+In tool, presents one thing - rep date. Each point when executing, rep date calculating for. It uses for information, and, for calculating points of dataflow will executed (further will be about). See table `df.flow_rep_dttm` - one row per point of flow, with rep date, up to that the point is loaded. Rep date of a destination (stage) is min of rep dates of points, building it, and it is known only when all of them reported - see view `df.vw_dest_rep_dttm`. Also table `df.flow_rep_dttm_clc` keeps contributions of points per batch, for multi-tier readiness of a destination.\
 \
 and we have a view, calculating order of executing data flow:
 ```sql
@@ -58,7 +58,7 @@ So, we going to execution of data flow and appropriate procedures.\
 `df.exec_id(in _id_batch bigint, in _id int, out _strt_dt timestamp)` - procedure, which executes given point of data flow. It called when executing a flow and it can be called when you test created point in development.
 Speaking about this procedure, it necessary to tell about:
 - `select * from df.exec_log el order by startdate desc;` - log of SQL code execution of this procedure
-- types of points of data flow. Now realized several points: "V" - view, "P" - procedure, "StrtP" - procedure, starting the flow and generating first rep date. About types will be separate paragraph.
+- types of points of data flow. Now realized several points: "V" - view, "P" - procedure, "StrtF" - function, starting the flow and returning rep date of a source. About types will be separate paragraph.
 
 \
 `df.exec_flow(in _mode varchar(100), in _procs varchar(100)[] default null
@@ -74,22 +74,22 @@ Handling errors: errors handles as excluded from flow points.
 Point types\
 \"P\" - procedure. It works as call \_source\_(id_batch)\
 \"V\" - view. It works as insert into dest select from view in source. Column names of view must match dest.\
-\"StrtP\" - starting procedure. It suppose to use for waiting a source and generating rep date.\
+\"StrtF\" - starting function. It suppose to use for waiting a source and returning its rep date.\
 Call looks like:
 ```sql
-call dwh.usp_sa_wait_contact_collection_event(28, 21, ('contact.collection_event', 'f  ')::df.point)
+select dwh.uf_sa_wait_contact_collection_event()
 ```
 Content (excluding waiting) should be:
 ```sql
-create or replace procedure dwh.usp_sa_wait_contact_collection_event(in _id_batch bigint, in _id int, in _p df.point)
+create or replace function dwh.uf_sa_wait_contact_collection_event()
+returns timestamp
 as $$
 begin
-insert into df.flow_rep_dttm_clc (id_batch, p, id, dttm, rep_id)
-select _id_batch, _p, _id, CURRENT_TIMESTAMP, null;
+return CURRENT_TIMESTAMP;
 end
 $$ LANGUAGE plpgsql;
 ```
-so, as you see, procedure should insert apropriate REP DATE in special table.\
+so, as you see, function should return apropriate REP DATE; `df.exec_id` stores it in `df.flow_rep_dttm`. Destination of a StrtF point is the sa-table it feeds (tier 1), the load itself is tier 2 ("f") and depends on tier 1.\
 \
 some internals\
 declared procedure `df.exec_flow` uses proc `df.exec_batch_from_id` for each runned point and generates content of table `df.batch_log` for current batch.\
@@ -105,7 +105,7 @@ select 'Collection', '2025-01-01', null, 'DTTM', null, null;
 adding point of data flow:
 ```sql
 insert into df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
-select 'StrtP', 'Collection', null, null, 100, 'dwh.usp_sa_wait_contact_collection_event', 'contact.collection_event'
+select 'StrtF', 'Collection', null, null, 100, 'dwh.uf_sa_wait_contact_collection_event', 'dwh.sa_collection_event'
 	, 1, null, null;
 ```
 executing point:

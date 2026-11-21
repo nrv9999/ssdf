@@ -3,25 +3,29 @@
 --
 -- Definitions are authoritative: clear and re-register on every run so that
 -- edits take effect. RESTART IDENTITY keeps point ids stable across reinstalls.
+--
+-- Each sa-table is built in two tiers: tier 1 is the StrtF point (waits for the
+-- external source and returns its rep date), tier 2 ('f') is the load itself.
+-- The load depends on tier 1, so the chain stays connected without a self-dependency.
 TRUNCATE TABLE df.flow RESTART IDENTITY;
 
 INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
-SELECT 'StrtP', 'Collection', NULL, NULL, 100, 'dwh.usp_sa_wait_contact_collection_event', 'contact.collection_event', 1, NULL, NULL
-WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'contact.collection_event' AND type = 'StrtP');
+SELECT 'StrtF', 'Collection', NULL, NULL, 100, 'dwh.uf_sa_wait_contact_collection_event', 'dwh.sa_collection_event', 1, NULL, NULL
+WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.sa_collection_event' AND type = 'StrtF');
 
 INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
-SELECT 'StrtP', 'Collection', NULL, NULL, 100, 'dwh.usp_sa_wait_contact_debt', 'contact.debt', 1, NULL, NULL
-WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'contact.debt' AND type = 'StrtP');
+SELECT 'StrtF', 'Collection', NULL, NULL, 100, 'dwh.uf_sa_wait_contact_debt', 'dwh.sa_debt', 1, NULL, NULL
+WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.sa_debt' AND type = 'StrtF');
 
 INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
-SELECT 'P', 'Collection', 'Collection', ARRAY[('contact.collection_event', 'f')::df.point], 100,
-    'dwh.usp_sa_load_contact_collection_event', 'dwh.sa_collection_event', 1, 'dt', NULL
-WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.sa_collection_event');
+SELECT 'P', 'Collection', 'Collection', ARRAY[('dwh.sa_collection_event', '1')::df.point], 100,
+    'dwh.usp_sa_load_contact_collection_event', 'dwh.sa_collection_event', 2, 'dt', NULL
+WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.sa_collection_event' AND type = 'P');
 
 INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
-SELECT 'P', 'Collection', 'Collection', ARRAY[('contact.debt', 'f')::df.point], 100,
-    'dwh.usp_sa_load_contact_debt', 'dwh.sa_debt', 1, NULL, NULL
-WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.sa_debt');
+SELECT 'P', 'Collection', 'Collection', ARRAY[('dwh.sa_debt', '1')::df.point], 100,
+    'dwh.usp_sa_load_contact_debt', 'dwh.sa_debt', 2, NULL, NULL
+WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.sa_debt' AND type = 'P');
 
 INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
 SELECT 'V', 'Collection', 'Collection', ARRAY[('dwh.sa_collection_event', 'f')::df.point], 1000,

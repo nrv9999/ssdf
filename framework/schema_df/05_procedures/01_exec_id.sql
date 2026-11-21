@@ -18,7 +18,7 @@ _rep_date timestamp;
 _cmd text;
 begin
 
-drop table if exists clmn;
+drop table if exists tmp_clmn;
 
 select "type", "source", dest, dest_tier_f, cond_col, horizon into _type, _source, _stf1, _stf2, _cond_col, _horizon from df.vw_flow where id = _id;
 
@@ -40,38 +40,40 @@ SELECT true into _dest_REP_DATE
 FROM information_schema.columns
 WHERE table_name = split_part(_dest."name", '.', -1) and table_schema = split_part(_dest."name", '.', -2) and column_name = 'rep_date';
 
-_rep_date = (select min(dttm) from df.flow_rep_dttm_clc c where c.id_batch = _id_batch and c.p = _dest);
+-- rep date of the inputs: min over deps' watermarks, null until all of them are known
+_rep_date = (select case when bool_and(dttm is not null) then min(dttm) end
+	from df.vw_dest_rep_dttm where p in (select unnest(deps) from df.flow f where f.id = _id));
 
-if _type = 'StrtP' then
-	_cmd = FORMAT('call %s(%s, %s, (''%s'', ''%s'')::df.point)', _source, _id_batch, _id, _dest.name, _dest.tier);
+if _type = 'StrtF' then
+	_cmd = FORMAT('select %s()', _source);
 elsif _type = 'P' then
 	_cmd = FORMAT('call %s(%s)', _source, _id_batch);
 ELSIF _type = 'V' then
-	create temp table clmn as
+	create temp table tmp_clmn as
 	SELECT column_name
 	FROM information_schema.columns
-	WHERE table_name = split_part(_source, '.', -1) and table_schema = split_part(_source, '.', -2) 
+	WHERE table_name = split_part(_source, '.', -1) and table_schema = split_part(_source, '.', -2)
 		and column_name not in ('id_batch', 'loaddate', 'update_dttm', 'rep_date')
 	intersect
 	SELECT column_name
 	FROM information_schema.columns
-	WHERE table_name = split_part(_dest."name", '.', -1) and table_schema = split_part(_dest."name", '.', -2) 
+	WHERE table_name = split_part(_dest."name", '.', -1) and table_schema = split_part(_dest."name", '.', -2)
 		and column_name not in ('id_batch', 'loaddate', 'update_dttm', 'rep_date');
 
 	_cmd = FORMAT('delete from %s
 where %s between %s and %s;', _dest."name", _cond_col, (select '''' || coalesce(dttm, '1900-01-01')::text || '''' from df.horizon where "name" = _horizon)
 	, (select '''' || coalesce(dttm_end, '2220-01-01')::text || '''' from df.horizon where "name" = _horizon)) || '
 
-' 
+'
 		|| FORMAT('insert into %s(%s%s%s%s%s)
 select %s%s%s%s%s
 from %s
 where %s between %s and %s;', _dest."name", case when _dest_id_batch then 'id_batch, ' else '' end, case when _dest_loadDate then 'LoadDate, ' else '' end
 	, case when _dest_UPDATE_DTTM then 'UPDATE_DTTM, ' else '' end, case when _dest_REP_DATE then 'REP_DATE, ' else '' end
-	, (select string_agg(column_name, ', ' order by column_name) from clmn)
+	, (select string_agg(column_name, ', ' order by column_name) from tmp_clmn)
 	, case when _dest_id_batch then _id_batch::text || ', ' else '' end, case when _dest_loadDate then '''' || CURRENT_TIMESTAMP::text || ''', ' else '' end
 	, case when _dest_UPDATE_DTTM then '''' || CURRENT_TIMESTAMP::text || ''', ' else '' end, case when _dest_REP_DATE then '''' || _rep_date::text || ''', ' else '' end
-	, (select string_agg(column_name, ', ' order by column_name) from clmn), _source
+	, (select string_agg(column_name, ', ' order by column_name) from tmp_clmn), _source
 	, _cond_col, (select '''' || coalesce(dttm, '1900-01-01')::text || '''' from df.horizon where "name" = _horizon)
 	, (select '''' || coalesce(dttm_end, '2220-01-01')::text || '''' from df.horizon where "name" = _horizon));
 else
@@ -85,7 +87,11 @@ RETURNING CURRENT_TIMESTAMP into _strt_dt;
 declare _rowcount bigint;
 BEGIN
 
-EXECUTE _cmd;
+if _type = 'StrtF' then
+	EXECUTE _cmd INTO _rep_date;
+else
+	EXECUTE _cmd;
+end if;
 
 GET DIAGNOSTICS _rowcount = ROW_COUNT;
 
@@ -104,21 +110,17 @@ EXCEPTION
 		where id_batch = _id_batch and id = _id and startdate = _strt_dt;
 END;
 
-if _type <> 'StrtP' then
-	insert into df.flow_rep_dttm_clc (id_batch, p, id, dttm, rep_id)
-	select _id_batch, _dest, _id
-		, (select min(dttm) from df.flow_rep_dttm r where p in (select unnest(deps) from df.flow f where f.id = _id))
-		, null;
-end if;
+insert into df.flow_rep_dttm (id, dttm, rep_id, id_batch)
+values (_id, _rep_date, null, _id_batch)
+on conflict (id) do update
+set dttm = excluded.dttm
+    , rep_id = excluded.rep_id
+    , id_batch = excluded.id_batch;
 
-if (select count(*) from df.flow_rep_dttm_clc where id_batch = _id_batch and p = _dest)
-	= (select count(*) from df.vw_flow where (dest, dest_tier_f)::df.point = _dest) then
-	update df.flow_rep_dttm f
-	set dttm = _rep_date
-	where p = _dest;
-end if;
+insert into df.flow_rep_dttm_clc (id_batch, p, id, dttm, rep_id)
+values (_id_batch, _dest, _id, _rep_date, null);
 
-drop table if exists clmn;
+drop table if exists tmp_clmn;
 
 end
 $$ LANGUAGE plpgsql;

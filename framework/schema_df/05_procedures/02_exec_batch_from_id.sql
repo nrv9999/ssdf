@@ -26,13 +26,11 @@ end if;
 insert into df.dbg
 select _id_batch, _id, CURRENT_TIMESTAMP::text || ' lock';
 
-drop table if exists fb;
+drop table if exists tmp_next;
 
-drop table if exists t;
+drop table if exists tmp_next_filter;
 
-drop table if exists t2;
-
-drop table if exists t3;
+drop table if exists tmp_exclude;
 
 declare _rowcount bigint;
 BEGIN
@@ -47,10 +45,10 @@ BEGIN
 
 	if (select executed from df.batch_log where id_batch = _id_batch and id = _id) = 'error' then
 
-		create temp table t2 (id int);
+		create temp table tmp_exclude (id int);
 		
 		loop
-			insert into t2
+			insert into tmp_exclude
 			select f2.id from
 				(select array_agg((f.dest, f.dest_tier_f)::df.point) dests from
 					(select distinct f.dest, f.dest_tier_f from df.batch_log as b
@@ -58,21 +56,21 @@ BEGIN
 							on f.id = b.id
 					where b.executed = 'error' and  b.id_batch = _id_batch
 					union
-					select distinct f.dest, f.dest_tier_f from t2
+					select distinct f.dest, f.dest_tier_f from tmp_exclude
 						join df.vw_flow f
-							on f.id = t2.id) f) f
+							on f.id = tmp_exclude.id) f) f
 				join df.vw_flow f2
 					on f2.deps && f.dests
 			where f2.id in (select id from df.batch_log where id_batch = _id_batch and executed is null)
-				and not exists (select 1 from t2 where t2.id = f2.id)
+				and not exists (select 1 from tmp_exclude where tmp_exclude.id = f2.id)
 				and ((_mode = 'full' and (select array_agg(p) from (select unnest(f.dests) p
 					union all
-					(select p from df.flow_rep_dttm rd where _use_rep_dttm and rd.dttm
-						<= (select dttm from df.flow_rep_dttm rd2 where rd2.p = (f2.dest, f2.dest_tier_f)::df.point)))) @> f2.deps)
+					(select p from df.vw_dest_rep_dttm rd where _use_rep_dttm and rd.dttm
+						<= (select dttm from df.vw_dest_rep_dttm rd2 where rd2.p = (f2.dest, f2.dest_tier_f)::df.point)))) @> f2.deps)
 				or (_mode = 'strict' /*and exists ((SELECT unnest(f.dests)
 							union all
-							(select p from df.flow_rep_dttm rd where _use_rep_dttm and rd.dttm
-								> (select dttm from df.flow_rep_dttm rd2 where rd2.p = (f2.dest, f2.dest_tier_f)::df.point)))
+							(select p from df.vw_dest_rep_dttm rd where _use_rep_dttm and rd.dttm
+								> (select dttm from df.vw_dest_rep_dttm rd2 where rd2.p = (f2.dest, f2.dest_tier_f)::df.point)))
 	    				INTERSECT
 	    				SELECT unnest(f2.deps))*/));
 
@@ -83,9 +81,9 @@ BEGIN
 
 		update df.batch_log as b
 		set enabled = false
-		where id_batch = _id_batch and id in (select id from t2);
+		where id_batch = _id_batch and id in (select id from tmp_exclude);
 
-		drop table if exists t2;
+		drop table if exists tmp_exclude;
 	end if;
 END;
 
@@ -116,27 +114,27 @@ then
 		from df.batch_log b where b.id_batch = _id_batch and b.id = _id;
 	end if;
 	
-	create table fb as
+	create temp table tmp_next as
 	select * from df.batch_log b where b.id_batch = _id_batch and b.executed is null and b.enabled = true and vw_ordr <= _v;
-	
-	create table t as
+
+	create temp table tmp_next_filter as
 	select *
 	from (select *
-		from (select id from fb
-			order by fb.vw_ordr, fb.priority limit 1)
+		from (select id from tmp_next
+			order by tmp_next.vw_ordr, tmp_next.priority limit 1)
 		union all
-		select fb2.id from
-			(select * from fb
-			order by fb.vw_ordr, fb.priority limit 1) fb
-			join fb fb2
-				on fb2.id <> fb.id and fb2.vw_ordr <= fb.vw_ordr_max);
+		select tmp_next2.id from
+			(select * from tmp_next
+			order by tmp_next.vw_ordr, tmp_next.priority limit 1) tmp_next
+			join tmp_next tmp_next2
+				on tmp_next2.id <> tmp_next.id and tmp_next2.vw_ordr <= tmp_next.vw_ordr_max);
 	
-	delete from fb
-	where id not in (select id from t);
+	delete from tmp_next
+	where id not in (select id from tmp_next_filter);
 	
 	loop
 		_curid = null;
-		select id into _curid from fb b order by priority, vw_ordr, id limit 1 offset _i;
+		select id into _curid from tmp_next b order by priority, vw_ordr, id limit 1 offset _i;
 		
 		if _curid is null then
 			exit;
@@ -161,7 +159,7 @@ then
 	
 	_curid = null;
 	
-	select id into _curid from fb b order by priority, vw_ordr, id limit 1;
+	select id into _curid from tmp_next b order by priority, vw_ordr, id limit 1;
 	
 	if _curid is not null and not exists (select id from df.batch_log b where b.id_batch = _id_batch and executed = 'running') then
 	
@@ -182,13 +180,11 @@ then
 
 end if;
 
-drop table if exists fb;
+drop table if exists tmp_next;
 
-drop table if exists t;
+drop table if exists tmp_next_filter;
 
-drop table if exists t2;
-
-drop table if exists t3;
+drop table if exists tmp_exclude;
 
 --commit;
 
