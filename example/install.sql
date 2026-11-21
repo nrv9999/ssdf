@@ -22,10 +22,12 @@
 \echo Installing dwh procedures...
 \i schema_dwh/procedures/01_usp_sa_wait_contact_collection_event.sql
 \i schema_dwh/procedures/02_usp_sa_wait_contact_debt.sql
-\i schema_dwh/procedures/03_usp_srs_collection_event.sql
-\i schema_dwh/procedures/04_usp_glb_collection_event.sql
-\i schema_dwh/procedures/05_usp_srs_debt.sql
-\i schema_dwh/procedures/06_usp_glb_debt.sql
+\i schema_dwh/procedures/03_usp_sa_load_contact_collection_event.sql
+\i schema_dwh/procedures/04_usp_sa_load_contact_debt.sql
+\i schema_dwh/procedures/05_usp_srs_collection_event.sql
+\i schema_dwh/procedures/06_usp_glb_collection_event.sql
+\i schema_dwh/procedures/07_usp_srs_debt.sql
+\i schema_dwh/procedures/08_usp_glb_debt.sql
 
 -- horizons must precede flow: df.flow.horizon references df.horizon(name)
 \echo Registering horizons...

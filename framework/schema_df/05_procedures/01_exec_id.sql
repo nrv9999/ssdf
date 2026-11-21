@@ -26,19 +26,19 @@ _dest = (_stf1, _stf2)::df.point;
 
 SELECT true into _dest_id_batch
 FROM information_schema.columns
-WHERE table_name = split_part(_dest."name", '.', -1) and table_schema = split_part(_dest."name", '.', -2) and column_name = 'ID_Batch';
+WHERE table_name = split_part(_dest."name", '.', -1) and table_schema = split_part(_dest."name", '.', -2) and column_name = 'id_batch';
 
 SELECT true into _dest_LoadDate
 FROM information_schema.columns
-WHERE table_name = split_part(_dest."name", '.', -1) and table_schema = split_part(_dest."name", '.', -2) and column_name = 'LoadDate';
+WHERE table_name = split_part(_dest."name", '.', -1) and table_schema = split_part(_dest."name", '.', -2) and column_name = 'loaddate';
 
 SELECT true into _dest_UPDATE_DTTM
 FROM information_schema.columns
-WHERE table_name = split_part(_dest."name", '.', -1) and table_schema = split_part(_dest."name", '.', -2) and column_name = 'UPDATE_DTTM';
+WHERE table_name = split_part(_dest."name", '.', -1) and table_schema = split_part(_dest."name", '.', -2) and column_name = 'update_dttm';
 
 SELECT true into _dest_REP_DATE
 FROM information_schema.columns
-WHERE table_name = split_part(_dest."name", '.', -1) and table_schema = split_part(_dest."name", '.', -2) and column_name = 'REP_DATE';
+WHERE table_name = split_part(_dest."name", '.', -1) and table_schema = split_part(_dest."name", '.', -2) and column_name = 'rep_date';
 
 _rep_date = (select min(dttm) from df.flow_rep_dttm_clc c where c.id_batch = _id_batch and c.p = _dest);
 
