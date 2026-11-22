@@ -133,5 +133,15 @@ call df.exec_flow('full', array['Collection']);
 call df.exec_flow('strict', array['Collection']);
 ```
 
+### Python dispatcher
+`framework/python/ssdf.py` is a client-thread replacement for `df.exec_flow` / `df.exec_batch_from_id`. It uses the same planning, error-propagation and wave-selection SQL, but launches points as threads, each with its own client connection, instead of pg_cron jobs - so no +2 minute delay and no background workers. `df.exec_id` is still called as SQL; the original SQL procedures remain installed and usable. Batch state transitions are serialized with a PostgreSQL advisory lock instead of `dbms_lock` (points themselves execute outside the lock, in parallel), so the Python path needs neither pg_cron nor pg_background/pg_dbms_lock - only Python 3 and psycopg (v3):
+```
+python3 -m venv .venv
+.venv/bin/pip install "psycopg[binary]"
+.venv/bin/python framework/python/ssdf.py --mode strict
+.venv/bin/python framework/python/ssdf.py --mode full --procs Collection
+```
+Parameters mirror `df.exec_flow`: `--procs`, `--start-ids`, `--dests name:tier`, `--excls name:tier`, `--no-rep-dttm`, plus connection options `--dbname` (default "demo"), `--host`, `--port`, `--user`.
+
 
 
