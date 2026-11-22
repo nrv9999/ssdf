@@ -35,7 +35,7 @@ WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.h_collection_event');
 
 INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
 SELECT 'V', 'Collection', 'Collection', ARRAY[('dwh.sa_debt', 'f')::df.point], 1000,
-    'dwh.sa_debt', 'dwh.h_debt', 1, NULL, NULL
+    'dwh.sa_debt', 'dwh.h_debt', 1, 'dt', NULL
 WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.h_debt');
 
 INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)

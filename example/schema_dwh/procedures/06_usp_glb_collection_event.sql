@@ -9,7 +9,7 @@ BEGIN
 
     INSERT INTO dwh.glb_collection_event (id_batch, LoadDate, RK, source_id, source_cd)
     SELECT DISTINCT _id_batch, CURRENT_TIMESTAMP,
-        mx + ROW_NUMBER() OVER (), id, 'CONT'
+        COALESCE(mx, 0) + ROW_NUMBER() OVER (), id, 'CONT'
     FROM dwh.srs_collection_event s
     WHERE NOT EXISTS (
         SELECT 1 FROM dwh.glb_collection_event g

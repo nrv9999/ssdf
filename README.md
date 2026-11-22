@@ -6,8 +6,10 @@ tool/framework for realization of the SQL data flow (ETL), also based on SQL. It
 ### Requirements
 postgres extensions:\
 dblink\
+[pg_background](https://github.com/vibhorkum/pg_background) - required by pg_dbms_lock\
 [pg_dbms_lock](https://github.com/HexaCluster/pg_dbms_lock)\
 [pg_cron](https://github.com/citusdata/pg_cron). pg_cron should be installed in postgres database.\
+Set `cron.timezone` to the server's `timezone` (pg_cron defaults to GMT, while ssdf builds schedules from `CURRENT_TIMESTAMP`); it is a postmaster-level setting, so restart after changing.\
 Your database (for now) should be named "demo".
 
 ### deploying
