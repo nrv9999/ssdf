@@ -37,7 +37,7 @@ Project have 2 main features:
 3) also I hope that SQL realization of the tool quite tranparent (see df.exec_id proc) and it could be modified for various needs, for example, types of points of data flow.
 
 how it looks:\
-![ssdf](https://github.com/nrv9999/ssdf/blob/main/screenshot_dataflow.png)
+![ssdf](screenshot_dataflow.png)
 
 ### description
 so, we have table for describing SQL data flow:
