@@ -22,6 +22,7 @@ log = logging.getLogger("ssdf")
 
 LOCK_NAME = "ssdf_exec_batch_from_id_lock"
 
+# excls is a true exclusion here; the original df.exec_flow still has the inverted <@ condition
 PLAN_START_SQL = """
 create temp table tmp_plan_list
 as
@@ -29,7 +30,7 @@ select *
 from df.vw_flow_1
 where (%(procs)s::varchar[] is null or process in (select unnest(%(procs)s::varchar[]))) and ((deps is null and %(start_ids)s::int[] is null)
         or id in (select unnest(%(start_ids)s::int[])))
-    and (%(excls)s::df.point[] is null or array[(dest, dest_tier_f)::df.point] <@ %(excls)s::df.point[])
+    and (%(excls)s::df.point[] is null or not (array[(dest, dest_tier_f)::df.point] <@ %(excls)s::df.point[]))
 """
 
 PLAN_NEXT_SQL = """
@@ -57,7 +58,7 @@ from
                     INTERSECT
                     SELECT unnest(f2.deps)))
 where f2.id not in (select id from tmp_plan_list) and (%(procs)s::varchar[] is null or f2."process" in (select unnest(%(procs)s::varchar[])))
-    and (%(excls)s::df.point[] is null or array[(f2.dest, f2.dest_tier_f)::df.point] <@ %(excls)s::df.point[])
+    and (%(excls)s::df.point[] is null or not (array[(f2.dest, f2.dest_tier_f)::df.point] <@ %(excls)s::df.point[]))
 """
 
 PLAN_ORDER_SQL = """

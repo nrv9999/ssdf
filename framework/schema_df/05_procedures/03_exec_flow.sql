@@ -29,7 +29,7 @@ select *
 from df.vw_flow_1
 where (_procs is null or process in (select unnest(_procs))) and ((deps is null and _start_ids is null) 
 		or id in (select unnest(_start_ids)))
-	and (_excls is null or array[(dest, dest_tier_f)::df.point] <@ _excls);
+	and (_excls is null or not (array[(dest, dest_tier_f)::df.point] <@ _excls));
 
 --raise notice '% 1st', (select count(*) from tmp_plan_list);
 
@@ -62,7 +62,7 @@ loop
 	    				INTERSECT
 	    				SELECT unnest(f2.deps)))
 	where f2.id not in (select id from tmp_plan_list) and (_procs is null or f2."process" in (select unnest(_procs)))
-		and (_excls is null or array[(f2.dest, f2.dest_tier_f)::df.point] <@ _excls);
+		and (_excls is null or not (array[(f2.dest, f2.dest_tier_f)::df.point] <@ _excls));
 
 	GET DIAGNOSTICS _rowcount := ROW_COUNT;
 

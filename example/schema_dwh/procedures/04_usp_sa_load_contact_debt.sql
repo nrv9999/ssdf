@@ -6,15 +6,16 @@ DROP PROCEDURE IF EXISTS dwh.usp_sa_load_contact_debt;
 -- and the downstream points have something to work with.
 --
 -- There is no real source, so the current timestamp serves as both the event
--- date (dt) and the reporting date (REP_DATE): for a single row the reporting
--- date equals the max event date of the loaded portion.
+-- date (dt) and the reporting date (REP_DATE) stored in the sa-table.
 --
 -- The id is taken from the history table as a workaround for this example only;
 -- in a real case it arrives from the source, so no extra flow dependency is
 -- declared for it.
 --
--- df.exec_id derives the point's rep date as max(REP_DATE) over the rows this
--- batch loaded, so user procedures never write to df.* system tables themselves.
+-- The point's rep date is not derived from the loaded rows: df.exec_id takes it
+-- as the min of the deps' watermarks (here - the rep date returned by the StrtF
+-- point dwh.uf_sa_wait_contact_debt). User procedures never write to df.* system
+-- tables themselves.
 CREATE OR REPLACE PROCEDURE dwh.usp_sa_load_contact_debt(
     IN _id_batch BIGINT
 )
