@@ -1,32 +1,40 @@
 # ssdf
 ## super SQL data flow
 
-tool/framework for realization of the SQL data flow (ETL), also based on SQL. It uses PostgreSQL.
+tool/framework for realization of the SQL data flow (ETL): the flow is described in SQL tables, the execution logic is SQL, and the launcher is Python[^1]. It uses PostgreSQL.
 
 ### Requirements
-postgres extensions:\
-dblink\
-[pg_background](https://github.com/vibhorkum/pg_background) - required by pg_dbms_lock\
-[pg_dbms_lock](https://github.com/HexaCluster/pg_dbms_lock)\
-[pg_cron](https://github.com/citusdata/pg_cron). pg_cron should be installed in postgres database.\
-Set `cron.timezone` to the server's `timezone` (pg_cron defaults to GMT, while ssdf builds schedules from `CURRENT_TIMESTAMP`); it is a postmaster-level setting, so restart after changing.\
-Your database (for now) should be named "demo".
+- PostgreSQL (tested on 18).
+- Python 3 with [psycopg](https://www.psycopg.org/) (v3) - the PostgreSQL driver for Python. Install it however you prefer (system package manager, pip, etc.).
 
 ### deploying
-apply framework/install.sql, then example/install.sql at your "demo" database (the installers use `\i` with relative paths, so run them from their own directories):
+**SQL part - apply install.sql via psql yourself.** The installers use `\i` with relative paths, so run them from their own directories ("demo" is just the example name).
+framework:
 ```
 cd framework
 psql -d demo -f install.sql
+```
+example (sample DWH and ETL. No real-like data - only for test framework): 
+```
 cd ../example
 psql -d demo -f install.sql
 ```
+Notice: probably you will need provide special authorization to psql, by options or other way.
+
+**Python launcher** - `install.sh` puts executable `.py` scripts into `/opt/ssdf` (they carry a `#!/usr/bin/env python3` shebang and the exec bit, so they run directly, no wrappers). It does not touch the database.
+```
+sudo bash install.sh          # call as /opt/ssdf/ssdf.py
+sudo bash install.sh --path   # + symlinks in /usr/local/bin: ssdf.py callable from any folder
+```
+Uninstall: `sudo bash uninstall.sh` (removes `/opt/ssdf` and the `/usr/local/bin` symlinks).
+Without install, from the project: `python3 framework/python/ssdf.py ...` (psycopg must be importable).
 
 ### short description
-project includes SQL code of the tool, sample data flow, and sample DWH for sample data flow.\
+project includes SQL/Python code of the tool, sample data flow, and sample DWH for sample data flow.\
 Project have 2 main features:
 1) describing points of SQL data flow in setting table, where your have source and destination and code generation for them.
 2) describing dependencies between points of SQL data flow directly as is and calculating fact order of execution at the moment of execution.
-3) also I hope that SQL realization of the tool quite tranparent (excluding calculating of the dependencies, hah) and it could be modifyed for various needs, for example, types of points of data flow.
+3) also I hope that SQL realization of the tool quite tranparent (see df.exec_id proc) and it could be modified for various needs, for example, types of points of data flow.
 
 how it looks:\
 ![ssdf](https://github.com/nrv9999/ssdf/blob/main/screenshot_dataflow.png)
@@ -38,7 +46,18 @@ select * from df.flow
 ```
 If you want to do changes in flow, you should directly insert/update to `df.flow`.\
 \
-and horizon table `df.horizon` (for now, only ddtm's is functional)\
+Point types\
+\"P\" - procedure. It works as call \_source\_(id_batch)\
+\"V\" - view. It works as insert into dest select from view in source. Column names of view must match dest (order not important).\
+\"StrtF\" - starting function. It suppose to use for waiting a source and returning its rep date.\
+Call looks like:
+```sql
+select dwh.uf_sa_wait_contact_collection_event()
+--2026-11-24 00:00:00.000
+```
+so, as you see, function should return apropriate REP DATE; `df.exec_id` stores it in `df.flow_rep_dttm`. Destination of a StrtF point is the sources of the next-in-chain points of the flow; it needed for passing REP DATE higher by flow.
+\
+The horizon table `df.horizon` (for now, only ddtm's is functional)\. `df.exec_id` uses it for constructing datetime condition on target SQL.
 \
 Also, as you can see, tool have one mini feature - tier of the point of data flow. What is this?\
 For example, you have big table, which builds for many stages. Tier of the point uses special type - `df.point` - with 2 fields - name of table and building stage of it. So, you can address each stage of building of the table for further using it as dependencie. If you want address final stage, use "f" (only in dependencies, in targets you only use numbers, because "f" calculates at moment (as last existing stage).\
@@ -54,55 +73,35 @@ view has following calculated fields:
 - `vw_ordr` - first number, at that point can be already executed.
 - `vw_ordr_max` - last number, at that point can be executed.
 
-So we can see, order of execution is undefined. On the idea, it resolves at moment of execution by the available resources. Also degree of parallelism defines by available resources - view have no limit for parallelism.\
-Also we have `priority` field, that directly used for calculating order. By the resource limitation, we consider limited number of points at each stage of execution, and; at each stage we prefer more prior points (from available) for execution.\
-\
-Dynamic parallelism based on available resources.\
-For now, it is not realized - available resources are infinitly. But realized structure for - it is needed to wrote content of functions `df.get_for_resource` and `df.wait_for_resource`.\
-So, it each stage of execution, program asked for resource for each point can be runned (and runs if get). If nothing runned program waits resource for most prior point can be runned.\
-\
-So, we going to execution of data flow and appropriate procedures.\
-\
-`df.exec_id(in _id_batch bigint, in _id int, out _strt_dt timestamp)` - procedure, which executes given point of data flow. It called when executing a flow and it can be called when you test created point in development.
-Speaking about this procedure, it necessary to tell about:
-- `select * from df.exec_log el order by startdate desc;` - log of SQL code execution of this procedure
-- types of points of data flow. Now realized several points: "V" - view, "P" - procedure, "StrtF" - function, starting the flow and returning rep date of a source. About types will be separate paragraph.
+So we can see, order of execution is undefined. On the idea, it resolves at moment of execution by the available resources/priorites of the points. Degree of parallelism undefined for now (for future: wiil can be set by setting)\
+`priority` using in case when we can launch, 2 points for example, but have only 1 free thread - so point with higher 'priority' will be.\
 
-\
-`df.exec_flow(in _mode varchar(100), in _procs varchar(100)[] default null
-	, in _start_ids int[] default null, in _dests df.point[] default null, in _excls df.point[] default null, in _use_rep_dttm bool default true)` - main procedure, that's executes a data flow. As you can see, it has many parameters:
-- `_mode` - "strict" or "full". Difference between then is in what in "strict" mode point is executed when all od it dependencies are executed in current batch (or have newer rep date) and in "full" mode only one dependencie (executed or has newer rep date) is enough.
-- `_procs` - array of names of processes. Process, here (in tool) is conditional way for separate different workload, but by default, data flow consider at all. So, if it null, data flow consider at all, if it given, data flow limits by given processes.
-Handling errors: errors handles as excluded from flow points.
-- `_start_ids`. If it null, data flow starts by points having no dependencies, if it given - by then.
-- `_dests` - destinations, that is will not generate data flow after them.
-- `_excls` - points, to be excluded from executing data flow.
-- `_use_rep_dttm bool` - use rep date for calculating dependecies (if false, it will be considered only dependencies, runned in the batch.
+Load modes: "strict" or "full". Difference between then is in what in "strict" mode point is executed when all of it dependencies are executed in current batch (or have newer rep date) and in "full" mode only one dependencie (executed or has newer rep date) is enough.\
+Handling errors: errors handles as excluded from flow points - dependents are disabled according to the load mode politics.
 
-Point types\
-\"P\" - procedure. It works as call \_source\_(id_batch)\
-\"V\" - view. It works as insert into dest select from view in source. Column names of view must match dest.\
-\"StrtF\" - starting function. It suppose to use for waiting a source and returning its rep date.\
-Call looks like:
-```sql
-select dwh.uf_sa_wait_contact_collection_event()
-```
-Content (excluding waiting) should be:
-```sql
-create or replace function dwh.uf_sa_wait_contact_collection_event()
-returns timestamp
-as $$
-begin
-return CURRENT_TIMESTAMP;
-end
-$$ LANGUAGE plpgsql;
-```
-so, as you see, function should return apropriate REP DATE; `df.exec_id` stores it in `df.flow_rep_dttm`. Destination of a StrtF point is the sa-level load procedure it feeds; the load targets the sa-table and depends on the StrtF point ("f").\
-\
+### Python launcher
+`framework/python/ssdf.py`_/opt/ssdf/ssdf.py
+
+Parameters:
+- `--mode` - "strict" or "full" (see Load modes above).
+- `--procs` - array of names of processes. Process, here (in tool) is conditional way for separate different workload, but by default, data flow consider at all. So, if it null, data flow consider at all, if it given, data flow limits by given processes.
+- `--start-ids`. If it null, data flow starts by points having no dependencies, if it given - by then.
+- `--dests` - destinations (name:tier), that is will not generate data flow after them.
+- `--excls` - points (name:tier), to be excluded from executing data flow.
+- `--no-rep-dttm` - do not use rep date for calculating dependecies (if given, it will be considered only dependencies, runned in the batch). Rep dates are still recorded - the flag only excludes them from the calculation.
+- connection options: `--dbname` (default "demo"), `--host`, `--port`, `--user`.
+
 some internals\
-declared procedure `df.exec_flow` uses proc `df.exec_batch_from_id` for each runned point and generates content of table `df.batch_log` for current batch.\
-In table `df.batch_log` wrotes all data flow planned to run in batch.\
-In case when `df.exec_batch_from_id` see the error in runned code - it disables all related points of data flow (according to load mode  politics - strict or full).
+the launcher calculates the closure of points to run (by dependencies and rep dates) and writes the plan into table `df.batch_log` for current batch.\
+Then it executes points in waves: each point runs in its own thread with its own client connection, via `df.exec_id`.\
+In case when the launcher see the error in runned code - it disables all related points of data flow (according to load mode politics - strict or full).\
+Batch state transitions are serialized with a PostgreSQL advisory lock; the points themselves execute outside the lock, in parallel.\
+\
+`df.exec_id(in _id_batch bigint, in _id int, out _strt_dt timestamp)` - procedure, which executes given point of data flow. The launcher calls it for every point; it can be called also when you test created point in development.\
+Logs:
+- `select * from df.exec_log el order by startdate desc;` - log of SQL code execution
+- `select * from df.batch_log order by id_batch desc, vw_ordr, priority, id;` - plan and state of points per batch
+- `select * from df.dbg order by msg;` - trace of the wave walker
 
 ### examples
 adding horizon:
@@ -116,7 +115,7 @@ insert into df.flow (type, process, horizon, deps, priority, source, dest, dest_
 select 'StrtF', 'Collection', null, null, 100, 'dwh.uf_sa_wait_contact_collection_event', 'dwh.usp_sa_load_contact_collection_event'
 	, 1, null, null;
 ```
-executing point:
+executing point (development test):
 ```sql
 do $$
 declare _d timestamp;
@@ -125,47 +124,39 @@ call df.exec_id(0, 25, _d);
 end
 $$;
 ```
-executing flow:
-```sql
---full flow in strict mode
-call df.exec_flow('strict');
---full flow in full mode
-call df.exec_flow('full');
---full flow starting from point id=4 in strict mode
-call df.exec_flow('strict', null, array[4], null); 
---process "Collection" in full mode
-call df.exec_flow('full', array['Collection']);
---process "Collection" in strict mode
-call df.exec_flow('strict', array['Collection']);
+executing flow (with `--path`; otherwise `/opt/ssdf/ssdf.py`, or from the project `python3 framework/python/ssdf.py`):
 ```
-
-### Python dispatcher
-`framework/python/ssdf.py` is a client-thread replacement for `df.exec_flow` / `df.exec_batch_from_id`. It uses the same planning, error-propagation and wave-selection SQL, but launches points as threads, each with its own client connection, instead of pg_cron jobs - so no +2 minute delay and no background workers. `df.exec_id` is still called as SQL; the original SQL procedures remain installed and usable. Batch state transitions are serialized with a PostgreSQL advisory lock instead of `dbms_lock` (points themselves execute outside the lock, in parallel), so the Python path needs neither pg_cron nor pg_background/pg_dbms_lock - only Python 3 and psycopg (v3).
-
-Installing (puts executable `.py` scripts into `/opt/ssdf` - they carry a `#!/usr/bin/env python3` shebang and the exec bit, so they run directly, no wrappers):
-```
-sudo pacman -S python-psycopg
-sudo bash install.sh                 # /opt/ssdf/ssdf.py --mode strict
-sudo bash install.sh --path          # + symlinks in /usr/local/bin: ssdf.py callable from any folder
-sudo bash install.sh --with-example  # also apply example/install.sql (demo legend DWH) to the database
-```
-Options combine; `--dbname=NAME` sets the target database for `--with-example` (default "demo"; framework/install.sql must already be applied). `/usr/local/bin` is already on PATH in any shell (fish included), so `--path` needs no PATH/profile edits; without it the symlinks are removed.
-Uninstall: `sudo bash uninstall.sh` (removes `/opt/ssdf` and the `/usr/local/bin` symlinks; the python-psycopg package stays).
-Usage:
-```
-ssdf.py --mode strict                 # with --path; otherwise /opt/ssdf/ssdf.py --mode strict
+# full flow in strict mode
+ssdf.py --mode strict
+# full flow in full mode
+ssdf.py --mode full
+# full flow starting from point id=4 in strict mode
+ssdf.py --mode strict --start-ids 4
+# process "Collection" in full mode
 ssdf.py --mode full --procs Collection
-/opt/ssdf/test/example/all_execs.py             # test scenarios (need the example DWH), reset df log tables between runs
+# process "Collection" in strict mode
+ssdf.py --mode strict --procs Collection
+```
+test scenarios (need the example DWH): `example/test/python/all_execs.py`, installed as `/opt/ssdf/test/example/all_execs.py`:
+```
+/opt/ssdf/test/example/all_execs.py             # resets df log tables between runs
 /opt/ssdf/test/example/all_execs.py --no-reset  # keep state between runs (for inspection; expectations assume a clean state)
 ```
-Admin - closing points stuck in 'running' after a system fault (network drop, server reboot, dispatcher crash; user SQL errors are handled by `df.exec_id` itself):
+The test script finds `ssdf.py` both in the repo layout and in `/opt/ssdf` (test in `/opt/ssdf/test/example`).
+
+### admin: cleaning stuck points
+User errors in SQL workload are handled by `df.exec_id` itself (the point becomes error and dependents are disabled). But a system fault (network drop, server reboot, launcher crash) can leave points in `df.batch_log.executed='running'` without a live thread. Such tails are closed manually, as error with 'system fault'.
+
+Python script (interactive):
 ```
-ssdf_admin_clean_err_tail.py   # interactive: lists running points with numbers, asks which to close (0 - all, empty - cancel)
+ssdf_admin_clean_err_tail.py   # lists running points with numbers, asks which to close (0 - all, empty - cancel)
 ```
-SQL variant: `select * from df.list_running();` then `select * from df.close_running(array[1,2]);` (`array[0]` - all). Closed points become `error` with `_sqlerrm = 'system fault'` (in `df.batch_log`, and in any phantom 'running' `df.exec_log` row).
-Debugging from the project (no install): `python3 framework/python/ssdf.py --mode strict`, `python3 example/test/python/all_execs.py` - psycopg must be importable (the system package above, or a venv: `python3 -m venv .venv && .venv/bin/pip install "psycopg[binary]"`). The test script finds `ssdf.py` both in the repo layout and in `/opt/ssdf` (test in `/opt/ssdf/test/example`).
+SQL functions (same numbering):
+```sql
+select * from df.list_running();               -- running points with numbers
+select * from df.close_running(array[1, 2]);   -- close selected; array[0] - all
+```
+Closed points become error with `_sqlerrm='system fault'` in `df.batch_log`; phantom 'running' rows in `df.exec_log` are closed too (real done/error history is preserved). Closing only fixes the state - it does not disable dependents and does not continue the batch.
 
-Parameters mirror `df.exec_flow`: `--procs`, `--start-ids`, `--dests name:tier`, `--excls name:tier`, `--no-rep-dttm`, plus connection options `--dbname` (default "demo"), `--host`, `--port`, `--user`. `--excls` is a true exclusion (the inverted condition is fixed in both the dispatcher and `df.exec_flow`). `--no-rep-dttm` does not stop rep-date recording (`exec_id` always writes `flow_rep_dttm`/`clc`) - it only excludes watermarks from the dependency calculation.
 
-
-
+[^1]: idea was in clean SQL, but during of the technical characteristic of the Postgres tools, providing threading capability - preffered the Python using clients connection pool. 

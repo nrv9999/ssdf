@@ -1,1 +1,6 @@
 /.gigaide/gigaide.properties
+/.venv/
+/.qwen/
+__pycache__/
+/.idea/
+/.memory/project/ssdf-local-machine.md
