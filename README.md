@@ -13,10 +13,12 @@ Set `cron.timezone` to the server's `timezone` (pg_cron defaults to GMT, while s
 Your database (for now) should be named "demo".
 
 ### deploying
-apply framework/install.sql, then example/install.sql at your "demo" database:
+apply framework/install.sql, then example/install.sql at your "demo" database (the installers use `\i` with relative paths, so run them from their own directories):
 ```
-psql -d demo -f framework/install.sql
-psql -d demo -f example/install.sql
+cd framework
+psql -d demo -f install.sql
+cd ../example
+psql -d demo -f install.sql
 ```
 
 ### short description
@@ -140,20 +142,28 @@ call df.exec_flow('strict', array['Collection']);
 ### Python dispatcher
 `framework/python/ssdf.py` is a client-thread replacement for `df.exec_flow` / `df.exec_batch_from_id`. It uses the same planning, error-propagation and wave-selection SQL, but launches points as threads, each with its own client connection, instead of pg_cron jobs - so no +2 minute delay and no background workers. `df.exec_id` is still called as SQL; the original SQL procedures remain installed and usable. Batch state transitions are serialized with a PostgreSQL advisory lock instead of `dbms_lock` (points themselves execute outside the lock, in parallel), so the Python path needs neither pg_cron nor pg_background/pg_dbms_lock - only Python 3 and psycopg (v3).
 
-Installing (puts the scripts into `/opt/ssdf` and the commands onto PATH):
+Installing (puts executable `.py` scripts into `/opt/ssdf` - they carry a `#!/usr/bin/env python3` shebang and the exec bit, so they run directly, no wrappers):
 ```
 sudo pacman -S python-psycopg
-sudo bash install.sh
+sudo bash install.sh                 # /opt/ssdf/ssdf.py --mode strict
+sudo bash install.sh --path          # + symlinks in /usr/local/bin: ssdf.py callable from any folder
+sudo bash install.sh --with-example  # also apply example/install.sql (demo legend DWH) to the database
 ```
-Uninstall: `sudo bash uninstall.sh` (removes `/opt/ssdf` and the PATH wrappers; the python-psycopg package stays).
+Options combine; `--dbname=NAME` sets the target database for `--with-example` (default "demo"; framework/install.sql must already be applied). `/usr/local/bin` is already on PATH in any shell (fish included), so `--path` needs no PATH/profile edits; without it the symlinks are removed.
+Uninstall: `sudo bash uninstall.sh` (removes `/opt/ssdf` and the `/usr/local/bin` symlinks; the python-psycopg package stays).
 Usage:
 ```
-ssdf --mode strict
-ssdf --mode full --procs Collection
-ssdf-test             # test scenarios, resets df log tables between runs
-ssdf-test --no-reset  # keep state between runs (for inspection; expectations assume a clean state)
+ssdf.py --mode strict                 # with --path; otherwise /opt/ssdf/ssdf.py --mode strict
+ssdf.py --mode full --procs Collection
+/opt/ssdf/test/example/all_execs.py             # test scenarios (need the example DWH), reset df log tables between runs
+/opt/ssdf/test/example/all_execs.py --no-reset  # keep state between runs (for inspection; expectations assume a clean state)
 ```
-Debugging from the project (no install): `python3 framework/python/ssdf.py --mode strict`, `python3 example/test/python/all_execs.py` - psycopg must be importable (the system package above, or a venv: `python3 -m venv .venv && .venv/bin/pip install "psycopg[binary]"`). The test script finds `ssdf.py` both in the repo layout and in `/opt/ssdf` (test in `/opt/ssdf/test`).
+Admin - closing points stuck in 'running' after a system fault (network drop, server reboot, dispatcher crash; user SQL errors are handled by `df.exec_id` itself):
+```
+ssdf_admin_clean_err_tail.py   # interactive: lists running points with numbers, asks which to close (0 - all, empty - cancel)
+```
+SQL variant: `select * from df.list_running();` then `select * from df.close_running(array[1,2]);` (`array[0]` - all). Closed points become `error` with `_sqlerrm = 'system fault'` (in `df.batch_log`, and in any phantom 'running' `df.exec_log` row).
+Debugging from the project (no install): `python3 framework/python/ssdf.py --mode strict`, `python3 example/test/python/all_execs.py` - psycopg must be importable (the system package above, or a venv: `python3 -m venv .venv && .venv/bin/pip install "psycopg[binary]"`). The test script finds `ssdf.py` both in the repo layout and in `/opt/ssdf` (test in `/opt/ssdf/test/example`).
 
 Parameters mirror `df.exec_flow`: `--procs`, `--start-ids`, `--dests name:tier`, `--excls name:tier`, `--no-rep-dttm`, plus connection options `--dbname` (default "demo"), `--host`, `--port`, `--user`. `--excls` is a true exclusion (the inverted condition is fixed in both the dispatcher and `df.exec_flow`). `--no-rep-dttm` does not stop rep-date recording (`exec_id` always writes `flow_rep_dttm`/`clc`) - it only excludes watermarks from the dependency calculation.
 

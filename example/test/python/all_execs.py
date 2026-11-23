@@ -4,7 +4,7 @@
 Запуск из корня репозитория:
     python3 example/test/python/all_execs.py [--no-reset]
 или после установки в /opt/ssdf (см. install.sh в корне репозитория):
-    ssdf-test [--no-reset]
+    python3 /opt/ssdf/test/example/all_execs.py [--no-reset]
 
 По умолчанию каждый сценарий сбрасывает лог-таблицы df; --no-reset оставляет состояние
 между прогонами (для инспекции/отладки — ожидания сценариев рассчитаны на чистое состояние,
@@ -22,15 +22,16 @@ from pathlib import Path
 import psycopg
 from psycopg.rows import dict_row
 
-# repo layout: <root>/framework/python/ssdf.py; installed: /opt/ssdf/ssdf.py (test in /opt/ssdf/test)
+# repo layout: <root>/framework/python/ssdf.py; installed: /opt/ssdf/ssdf.py (test in /opt/ssdf/test/example)
 _HERE = Path(__file__).resolve()
-for _cand in (_HERE.parents[3] / "framework" / "python", _HERE.parents[1]):
+for _cand in (_HERE.parents[3] / "framework" / "python", _HERE.parents[2], _HERE.parents[1]):
     if (_cand / "ssdf.py").exists():
         sys.path.insert(0, str(_cand))
         break
 else:
     raise SystemExit("ssdf.py не найден ни в layout репозитория, ни рядом с test/")
 import ssdf
+import ssdf_admin_clean_err_tail
 
 CONNINFO = {"dbname": "demo"}
 RESET = True
@@ -193,8 +194,44 @@ def excls_exclude():
     expect(d, DWH_DEBT, "error", True)
 
 
+def admin_fault():
+    """Админ-закрытие зависших running после системного сбоя (оба варианта).
+    Имитация: usp_sa_load_* -> dwh.sa_* батча 999 остались running без живого потока.
+    SQL: df.list_running() нумерует, df.close_running(array[num]) закрывает в error/'system fault';
+    Python: ssdf_admin_clean_err_tail.close_running(conn, [0]) закрывает все оставшиеся.
+    Фантомная running-запись exec_log тоже закрывается."""
+    with _conn() as conn:
+        conn.execute("""
+            insert into df.batch_log (id_batch, id, vw_ordr, vw_ordr_max, priority, loaddate, executed, startdate)
+            select 999, id, vw_ordr, vw_ordr_max, priority, CURRENT_TIMESTAMP, 'running', CURRENT_TIMESTAMP
+            from df.vw_flow where dest in (%s, %s)
+        """, (SA_CE, SA_DEBT))
+        conn.execute("""
+            insert into df.exec_log (id_batch, id, startdate, executed, command)
+            select 999, id, CURRENT_TIMESTAMP, 'running', 'phantom'
+            from df.flow where dest = %s
+        """, (SA_CE,))
+        rows = conn.execute("select * from df.list_running()").fetchall()
+        assert [r["num"] for r in rows] == [1, 2]
+        assert {r["dest"] for r in rows} == {SA_CE, SA_DEBT}
+        closed = conn.execute("select * from df.close_running(array[%s])", (rows[0]["num"],)).fetchall()
+        assert len(closed) == 1 and closed[0]["dest"] == rows[0]["dest"]
+        r = conn.execute("select executed, _sqlerrm from df.batch_log where id_batch = 999 and id = %s",
+                         (rows[0]["id"],)).fetchone()
+        assert r["executed"] == "error" and r["_sqlerrm"] == "system fault"
+        r = conn.execute("select executed, _sqlerrm, enddate from df.exec_log where id_batch = 999 and id = %s",
+                         (rows[0]["id"],)).fetchone()
+        assert r["executed"] == "error" and r["_sqlerrm"] == "system fault" and r["enddate"] is not None
+        closed = ssdf_admin_clean_err_tail.close_running(conn, [0])
+        assert len(closed) == 1 and closed[0]["dest"] == rows[1]["dest"]
+        assert conn.execute("select count(*) as n from df.batch_log where id_batch = 999 and executed = 'running'").fetchone()["n"] == 0
+        assert ssdf_admin_clean_err_tail.close_running(conn, [0]) == []
+        conn.execute("delete from df.exec_log where id_batch = 999")
+        conn.execute("delete from df.batch_log where id_batch = 999")
+
+
 SCENARIOS = [strict_full, full_full, dests_stop, procs_filter,
-             start_ids_debt, partial_refresh, no_rep_dttm, excls_exclude]
+             start_ids_debt, partial_refresh, no_rep_dttm, excls_exclude, admin_fault]
 
 
 def main():

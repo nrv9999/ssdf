@@ -26,6 +26,8 @@
 \echo Installing functions...
 \i schema_df/04_functions/01_get_for_resource.sql
 \i schema_df/04_functions/02_find_free_job.sql
+\i schema_df/04_functions/03_list_running.sql
+\i schema_df/04_functions/04_close_running.sql
 
 \echo Installing procedures...
 \i schema_df/05_procedures/01_exec_id.sql
