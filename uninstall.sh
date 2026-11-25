@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Remove the ssdf Python scripts installed by install.sh. Run with sudo:
-#   sudo bash uninstall.sh
+# Remove the ssdf Python scripts installed by install.sh. Run with sudo
+# (chmod +x uninstall.sh first):
+#   sudo ./uninstall.sh
 # The python-psycopg package is left in place; remove it separately if needed:
 #   sudo pacman -Rs python-psycopg
 set -euo pipefail

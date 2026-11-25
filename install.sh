@@ -4,8 +4,8 @@
 #   /opt/ssdf/ssdf.py --mode strict     (from the install folder: ./ssdf.py)
 # The database is NOT touched: apply framework/install.sql and example/install.sql
 # via psql yourself (see README).
-# Requires psycopg (v3) for Python 3. Run with sudo:
-#   sudo bash install.sh [--path]
+# Requires psycopg (v3) for Python 3. Run with sudo (chmod +x install.sh first):
+#   sudo ./install.sh [--path]
 #
 # --path : also symlink the scripts into /usr/local/bin (already on PATH in any
 #          shell, fish included), keeping the .py names: ssdf.py,

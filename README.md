@@ -23,10 +23,11 @@ Notice: probably you will need provide special authorization to psql, by options
 
 **Python launcher** - `install.sh` puts executable `.py` scripts into `/opt/ssdf` (they carry a `#!/usr/bin/env python3` shebang and the exec bit, so they run directly, no wrappers). It does not touch the database.
 ```
-sudo bash install.sh          # call as /opt/ssdf/ssdf.py
-sudo bash install.sh --path   # + symlinks in /usr/local/bin: ssdf.py callable from any folder
+chmod +x install.sh           # make the installer executable
+sudo ./install.sh             # call as /opt/ssdf/ssdf.py
+sudo ./install.sh --path      # + symlinks in /usr/local/bin: ssdf.py callable from any folder
 ```
-Uninstall: `sudo bash uninstall.sh` (removes `/opt/ssdf` and the `/usr/local/bin` symlinks).
+Uninstall: `chmod +x uninstall.sh` then `sudo ./uninstall.sh` (removes `/opt/ssdf` and the `/usr/local/bin` symlinks).
 Without install, from the project: `python3 framework/python/ssdf.py ...` (psycopg must be importable).
 
 ### short description
