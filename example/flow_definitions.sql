@@ -8,78 +8,78 @@
 -- external source and returns its rep date). The load targets the sa-table and
 -- depends on the StrtF point ('f', its only builder), so the chain stays connected
 -- without a self-dependency.
-TRUNCATE TABLE df.flow RESTART IDENTITY;
+TRUNCATE TABLE ssdf.flow RESTART IDENTITY;
 
-INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
-SELECT 'StrtF', 'Collection', NULL, NULL, 100, 'dwh.uf_sa_wait_contact_collection_event', 'dwh.usp_sa_load_contact_collection_event', 1, NULL, NULL
-WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.usp_sa_load_contact_collection_event' AND type = 'StrtF');
+INSERT INTO ssdf.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
+SELECT 'StrtF', 'Collection', NULL, NULL, 100, 'smpl_dwh.uf_sa_wait_contact_collection_event', 'smpl_dwh.usp_sa_load_contact_collection_event', 1, NULL, NULL
+WHERE NOT EXISTS (SELECT 1 FROM ssdf.flow WHERE dest = 'smpl_dwh.usp_sa_load_contact_collection_event' AND type = 'StrtF');
 
-INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
-SELECT 'StrtF', 'Collection', NULL, NULL, 100, 'dwh.uf_sa_wait_contact_debt', 'dwh.usp_sa_load_contact_debt', 1, NULL, NULL
-WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.usp_sa_load_contact_debt' AND type = 'StrtF');
+INSERT INTO ssdf.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
+SELECT 'StrtF', 'Collection', NULL, NULL, 100, 'smpl_dwh.uf_sa_wait_contact_debt', 'smpl_dwh.usp_sa_load_contact_debt', 1, NULL, NULL
+WHERE NOT EXISTS (SELECT 1 FROM ssdf.flow WHERE dest = 'smpl_dwh.usp_sa_load_contact_debt' AND type = 'StrtF');
 
-INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
-SELECT 'P', 'Collection', 'Collection', ARRAY[('dwh.usp_sa_load_contact_collection_event', 'f')::df.point], 100,
-    'dwh.usp_sa_load_contact_collection_event', 'dwh.sa_collection_event', 2, 'dt', NULL
-WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.sa_collection_event' AND type = 'P');
+INSERT INTO ssdf.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
+SELECT 'P', 'Collection', 'Collection', ARRAY[('smpl_dwh.usp_sa_load_contact_collection_event', 'f')::ssdf.point], 100,
+    'smpl_dwh.usp_sa_load_contact_collection_event', 'smpl_dwh.sa_collection_event', 2, 'dt', NULL
+WHERE NOT EXISTS (SELECT 1 FROM ssdf.flow WHERE dest = 'smpl_dwh.sa_collection_event' AND type = 'P');
 
-INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
-SELECT 'P', 'Collection', 'Collection', ARRAY[('dwh.usp_sa_load_contact_debt', 'f')::df.point], 100,
-    'dwh.usp_sa_load_contact_debt', 'dwh.sa_debt', 2, NULL, NULL
-WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.sa_debt' AND type = 'P');
+INSERT INTO ssdf.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
+SELECT 'P', 'Collection', 'Collection', ARRAY[('smpl_dwh.usp_sa_load_contact_debt', 'f')::ssdf.point], 100,
+    'smpl_dwh.usp_sa_load_contact_debt', 'smpl_dwh.sa_debt', 2, NULL, NULL
+WHERE NOT EXISTS (SELECT 1 FROM ssdf.flow WHERE dest = 'smpl_dwh.sa_debt' AND type = 'P');
 
-INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
-SELECT 'V', 'Collection', 'Collection', ARRAY[('dwh.sa_collection_event', 'f')::df.point], 1000,
-    'dwh.sa_collection_event', 'dwh.h_collection_event', 1, 'dt', NULL
-WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.h_collection_event');
+INSERT INTO ssdf.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
+SELECT 'V', 'Collection', 'Collection', ARRAY[('smpl_dwh.sa_collection_event', 'f')::ssdf.point], 1000,
+    'smpl_dwh.sa_collection_event', 'smpl_dwh.h_collection_event', 1, 'dt', NULL
+WHERE NOT EXISTS (SELECT 1 FROM ssdf.flow WHERE dest = 'smpl_dwh.h_collection_event');
 
-INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
-SELECT 'V', 'Collection', 'Collection', ARRAY[('dwh.sa_debt', 'f')::df.point], 1000,
-    'dwh.sa_debt', 'dwh.h_debt', 1, 'dt', NULL
-WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.h_debt');
+INSERT INTO ssdf.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
+SELECT 'V', 'Collection', 'Collection', ARRAY[('smpl_dwh.sa_debt', 'f')::ssdf.point], 1000,
+    'smpl_dwh.sa_debt', 'smpl_dwh.h_debt', 1, 'dt', NULL
+WHERE NOT EXISTS (SELECT 1 FROM ssdf.flow WHERE dest = 'smpl_dwh.h_debt');
 
-INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
-SELECT 'P', 'Collection', 'Collection', ARRAY[('dwh.sa_collection_event', 'f')::df.point], 100,
-    'dwh.usp_srs_collection_event', 'dwh.srs_collection_event', 1, 'dttm', NULL
-WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.srs_collection_event');
+INSERT INTO ssdf.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
+SELECT 'P', 'Collection', 'Collection', ARRAY[('smpl_dwh.sa_collection_event', 'f')::ssdf.point], 100,
+    'smpl_dwh.usp_srs_collection_event', 'smpl_dwh.srs_collection_event', 1, 'dttm', NULL
+WHERE NOT EXISTS (SELECT 1 FROM ssdf.flow WHERE dest = 'smpl_dwh.srs_collection_event');
 
-INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
-SELECT 'P', 'Collection', 'Collection', ARRAY[('dwh.srs_collection_event', 'f')::df.point], 100,
-    'dwh.usp_glb_collection_event', 'dwh.glb_collection_event', 1, 'dttm', NULL
-WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.glb_collection_event');
+INSERT INTO ssdf.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
+SELECT 'P', 'Collection', 'Collection', ARRAY[('smpl_dwh.srs_collection_event', 'f')::ssdf.point], 100,
+    'smpl_dwh.usp_glb_collection_event', 'smpl_dwh.glb_collection_event', 1, 'dttm', NULL
+WHERE NOT EXISTS (SELECT 1 FROM ssdf.flow WHERE dest = 'smpl_dwh.glb_collection_event');
 
-INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
-SELECT 'P', 'Collection', 'Collection', ARRAY[('dwh.sa_debt', 'f')::df.point], 100,
-    'dwh.usp_srs_debt', 'dwh.srs_debt', 1, NULL, NULL
-WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.srs_debt');
+INSERT INTO ssdf.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
+SELECT 'P', 'Collection', 'Collection', ARRAY[('smpl_dwh.sa_debt', 'f')::ssdf.point], 100,
+    'smpl_dwh.usp_srs_debt', 'smpl_dwh.srs_debt', 1, NULL, NULL
+WHERE NOT EXISTS (SELECT 1 FROM ssdf.flow WHERE dest = 'smpl_dwh.srs_debt');
 
-INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
-SELECT 'P', 'Collection', 'Collection', ARRAY[('dwh.srs_debt', 'f')::df.point], 100,
-    'dwh.usp_glb_debt', 'dwh.glb_debt', 1, NULL, NULL
-WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.glb_debt');
+INSERT INTO ssdf.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
+SELECT 'P', 'Collection', 'Collection', ARRAY[('smpl_dwh.srs_debt', 'f')::ssdf.point], 100,
+    'smpl_dwh.usp_glb_debt', 'smpl_dwh.glb_debt', 1, NULL, NULL
+WHERE NOT EXISTS (SELECT 1 FROM ssdf.flow WHERE dest = 'smpl_dwh.glb_debt');
 
-INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
+INSERT INTO ssdf.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
 SELECT 'V', 'Collection', 'Collection',
-    ARRAY[('dwh.srs_collection_event', 'f')::df.point, ('dwh.glb_collection_event', 'f')::df.point,
-          ('dwh.srs_debt', 'f')::df.point, ('dwh.glb_debt', 'f')::df.point,
-          ('dwh.sa_collection_event', 'f')::df.point],
-    100, 'dwh.vw_dwh_collection_event', 'dwh.dwh_collection_event', 1, 'dttm', NULL
-WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.dwh_collection_event');
+    ARRAY[('smpl_dwh.srs_collection_event', 'f')::ssdf.point, ('smpl_dwh.glb_collection_event', 'f')::ssdf.point,
+          ('smpl_dwh.srs_debt', 'f')::ssdf.point, ('smpl_dwh.glb_debt', 'f')::ssdf.point,
+          ('smpl_dwh.sa_collection_event', 'f')::ssdf.point],
+    100, 'smpl_dwh.vw_dwh_collection_event', 'smpl_dwh.dwh_collection_event', 1, 'dttm', NULL
+WHERE NOT EXISTS (SELECT 1 FROM ssdf.flow WHERE dest = 'smpl_dwh.dwh_collection_event');
 
-INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
+INSERT INTO ssdf.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
 SELECT 'V', 'Collection', 'Collection',
-    ARRAY[('dwh.srs_debt', 'f')::df.point, ('dwh.glb_debt', 'f')::df.point,
-          ('dwh.sa_debt', 'f')::df.point],
-    100, 'dwh.vw_dwh_debt', 'dwh.dwh_debt', 1, NULL, NULL
-WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.dwh_debt');
+    ARRAY[('smpl_dwh.srs_debt', 'f')::ssdf.point, ('smpl_dwh.glb_debt', 'f')::ssdf.point,
+          ('smpl_dwh.sa_debt', 'f')::ssdf.point],
+    100, 'smpl_dwh.vw_dwh_debt', 'smpl_dwh.dwh_debt', 1, NULL, NULL
+WHERE NOT EXISTS (SELECT 1 FROM ssdf.flow WHERE dest = 'smpl_dwh.dwh_debt');
 
-INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
+INSERT INTO ssdf.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
 SELECT 'V', 'Main', 'Main_Payment', NULL, 100,
-    'dwh.vw_main_dwh_payment', 'dwh.dwh_payment', 1, 'dttm', NULL
-WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.dwh_payment');
+    'smpl_dwh.vw_main_dwh_payment', 'smpl_dwh.dwh_payment', 1, 'dttm', NULL
+WHERE NOT EXISTS (SELECT 1 FROM ssdf.flow WHERE dest = 'smpl_dwh.dwh_payment');
 
-INSERT INTO df.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
+INSERT INTO ssdf.flow (type, process, horizon, deps, priority, source, dest, dest_tier, cond_col, rep_dttm_col)
 SELECT 'V', 'Collection', 'Collection',
-    ARRAY[('dwh.dwh_collection_event', 'f')::df.point, ('dwh.dwh_payment', 'f')::df.point],
-    100, 'dwh.vw_ams_collection_event', 'dwh.ams_collection_event', 1, 'dttm', NULL
-WHERE NOT EXISTS (SELECT 1 FROM df.flow WHERE dest = 'dwh.ams_collection_event');
+    ARRAY[('smpl_dwh.dwh_collection_event', 'f')::ssdf.point, ('smpl_dwh.dwh_payment', 'f')::ssdf.point],
+    100, 'smpl_dwh.vw_ams_collection_event', 'smpl_dwh.ams_collection_event', 1, 'dttm', NULL
+WHERE NOT EXISTS (SELECT 1 FROM ssdf.flow WHERE dest = 'smpl_dwh.ams_collection_event');

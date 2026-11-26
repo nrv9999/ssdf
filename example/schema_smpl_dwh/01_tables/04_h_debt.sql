@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS smpl_dwh.h_debt CASCADE;
+
+CREATE TABLE smpl_dwh.h_debt (
+    id_batch BIGINT NOT NULL,
+    LoadDate TIMESTAMP NOT NULL,
+    REP_DATE TIMESTAMP NOT NULL,
+    id BIGINT NOT NULL,
+    dt TIMESTAMP NOT NULL,
+    comment TEXT,
+    amount NUMERIC(18, 2) NOT NULL
+);

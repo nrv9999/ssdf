@@ -8,12 +8,12 @@
    В Python уже вынесено в `--dbname` (дефолт `demo`). Настройку кладём в таблицу
    **`dh.setting(settng, value)`** (схема `dh` — подтверждено пользователем); лаунчер читает
    дефолт оттуда. (SQL-путь исполнения архивирован; в нём `demo` был зашит в connstr dblink —
-   если архив когда-то оживёт, читать настройку и там.) См. п. 10: дефолт `demo` убирается —
+   если архив когда-то оживёт, читать настройку и там.) См. п. 8: дефолт `demo` убирается —
    роль `dh.setting` уточнить.
 2. **`max_parallel_points`** (дефолт **4**) — ограничение числа одновременно запущенных точек;
    если уперлись — ждём. **`max_parallel_points_polling`** (дефолт **5**, значение в секундах) —
    период поллинга ограничения. Настройки — в той же таблице. Заменяет стабы
-   `df.get_for_resource` / `df.wait_for_resource` и старое ограничение cron-слотами (3).
+   `ssdf.get_for_resource` / `ssdf.wait_for_resource` и старое ограничение cron-слотами (3).
    **Замысел пользователя (2026-11-23):** пытаемся запустить весь следующий уровень; при нехватке
    ресурсов остаются хвосты; на следующем уровне к ним возвращаемся; если точка следующего уровня
    уже доступна и её priority выше, чем у хвоста, — она идёт первой. Текущий walker этого не умеет:
@@ -21,34 +21,32 @@
    точки никто не подхватывает — реализовать возврат к хвостам с учётом priority вместе с лимитом
    (сюда же относится гейт `vw_ordr_max`).
 3. **Довести легенду example до ума**: недостающие объекты
-   `dwh.vw_main_dwh_payment -> dwh.dwh_payment`, `dwh.vw_dwh_debt -> dwh.dwh_debt` (+ `cond_col`),
-   `dwh.vw_ams_collection_event -> dwh.ams_collection_event`.
-4. **Переименовать схему `dwh` → `stdwh`.**
-5. **Переименовать схему `df` → `ssdf`.**
-6. **`df.horizon`: реализовать функционал `id`** (`id`/`id_end` объявлены, но не используются;
-   сейчас работает только `DTTM`). Для id-горизонта `df.exec_id` строит фильтр
+   `smpl_dwh.vw_main_dwh_payment -> smpl_dwh.dwh_payment`, `smpl_dwh.vw_dwh_debt -> smpl_dwh.dwh_debt` (+ `cond_col`),
+   `smpl_dwh.vw_ams_collection_event -> smpl_dwh.ams_collection_event`.
+4. **`ssdf.horizon`: реализовать функционал `id`** (`id`/`id_end` объявлены, но не используются;
+   сейчас работает только `DTTM`). Для id-горизонта `ssdf.exec_id` строит фильтр
    `cond_col between id and id_end` вместо дат.
-7. **Роли БД** (спроектировать + grant-скрипт; суперюзер не нужен никому):
-   - **юзер фреймворка** (гоняет лаунчер): `TEMP` на БД (по умолчанию); `SELECT` на `df.flow`,
-     `df.horizon`, `df.vw_flow*`, `df.vw_dest_rep_dttm`; `SELECT/INSERT/UPDATE` на `df.batch_log`,
-     `df.exec_log`, `df.dbg`, `df.flow_rep_dttm`, `df.flow_rep_dttm_clc`; `EXECUTE` на `df.exec_id`,
-     `df.get_for_resource`, `df.wait_for_resource`, `df.list_running`, `df.close_running`.
+5. **Роли БД** (спроектировать + grant-скрипт; суперюзер не нужен никому):
+   - **юзер фреймворка** (гоняет лаунчер): `TEMP` на БД (по умолчанию); `SELECT` на `ssdf.flow`,
+     `ssdf.horizon`, `ssdf.vw_flow*`, `ssdf.vw_dest_rep_dttm`; `SELECT/INSERT/UPDATE` на `ssdf.batch_log`,
+     `ssdf.exec_log`, `ssdf.dbg`, `ssdf.flow_rep_dttm`, `ssdf.flow_rep_dttm_clc`; `EXECUTE` на `ssdf.exec_id`,
+     `ssdf.get_for_resource`, `ssdf.wait_for_resource`, `ssdf.list_running`, `ssdf.close_running`.
      Без `CREATE` на схемы. Advisory-локи прав не требуют.
    - **админ фреймворка**: всё юзерское + чистка истории логов (`DELETE`/`TRUNCATE` на
-     `df.batch_log`, `df.exec_log`, `df.dbg`, `df.flow_rep_dttm_clc`; `df.flow_rep_dttm` —
+     `ssdf.batch_log`, `ssdf.exec_log`, `ssdf.dbg`, `ssdf.flow_rep_dttm_clc`; `ssdf.flow_rep_dttm` —
      текущее состояние, не история: сбрасывать отдельно и осторожно).
    - **роль-[эквивалент-]владельца example**: одна максимальная роль, владеет объектами примера
-     (схема `dwh`, таблицы/процедуры/представления + записи потока примера); юзеры просто
+     (схема `smpl_dwh`, таблицы/процедуры/представления + записи потока примера); юзеры просто
      добавляются в неё (`GRANT role TO user`) и гоняют фреймворк на примере; дополнительно
-     нужны права юзера фреймворка на `df`.
-8. **Переименовать `Collection` → `some` в примере** (объём уточнить: только имена
+     нужны права юзера фреймворка на `ssdf`.
+6. **Переименовать `Collection` → `some` в примере** (объём уточнить: только имена
    process/horizon или все объекты ветки collection).
-9. **Переименовать режимы `strict`/`full` во что-то более очевидное.**
+7. **Переименовать режимы `strict`/`full` во что-то более очевидное.**
     Семантика: strict = все входы свежие/в батче; full = достаточно любого.
     Кандидаты имён: `all`/`any` (или `all_deps`/`any_dep`) — выбрать.
     Затронет: значения `--mode` лаунчера, строковые литералы в портированном SQL
     (замыкание/пропагация), тесты, README. Архив не трогаем.
-10. **Убрать дефолт `demo` у `--dbname` — без дефолта.**
+8. **Убрать дефолт `demo` у `--dbname` — без дефолта.**
     Варианты: сделать параметр обязательным либо отдавать разрешение соединения
     libpq (`PGDATABASE`/`PGSERVICE`/окружение). Связано с п. 1 (`dh.setting`) —
     уточнить, нужна ли настройка вообще, если дефолта нет.
@@ -116,7 +114,7 @@
   `install.sh` — только Python-файлы (`--with-example`/`--dbname` убраны), БД не трогает.
   README переосмыслен целиком (не «питон в конце»): deploying (ручной psql + оговорка про
   peer/trust и права обычной роли) → concept → launcher → examples → admin.
-  Роли БД и Collection→some добавлены в «Принято» (п. 7–8).
+  Роли БД и Collection→some добавлены в «Принято» (п. 5–6).
 - 2026-11-26: **Гонка `id_batch = max+1` исправлена** — только Python-лаунчер:
   в `exec_flow` выбор номера и вставка плана обёрнуты в
   `pg_advisory_lock(hashtext('ssdf_batch_id'))` (`BATCH_LOCK_NAME`), снятие сразу после
@@ -131,3 +129,9 @@
   в комментарии). Порядок: example → framework. README deploying дополнен. Проверено
   на временной БД (полный цикл install → uninstall; рабочая demo не тронута): 14 точек
   и 2 горизонта удалены, схемы сняты каскадом, временная БД удалена.
+- 2026-11-26: **Переименование схем: `df` → `ssdf`, `dwh` → `smpl_dwh`** (имя example-схемы
+  уточнено пользователем: `smpl_dwh` вместо намечавшегося `stdwh`). Сквозная замена
+  в SQL/Python/README/тестах; каталоги `framework/schema_ssdf`, `example/schema_smpl_dwh`
+  (git mv); архив `!ARCHIVE` переехал вместе с каталогом, содержимое не тронуто.
+  Проверено на временной БД: установка, 9/9 PASS, полный цикл деинсталляции.
+  Рабочая demo мигрирована в тот же день (drop df/dwh, установка ssdf/smpl_dwh) — 9/9 PASS на demo.

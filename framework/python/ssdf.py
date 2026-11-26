@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Client-thread dispatcher for the SSDF data flow.
 
-Python replacement for df.exec_flow / df.exec_batch_from_id: the planning,
+Python replacement for ssdf.exec_flow / ssdf.exec_batch_from_id: the planning,
 error-propagation and wave-selection SQL below is the original framework
 logic, but points are launched as threads, each with its own client
-connection, instead of pg_cron jobs. df.exec_id is still called as SQL.
+connection, instead of pg_cron jobs. ssdf.exec_id is still called as SQL.
 The original SQL procedures remain installed and usable.
 
 Usage:
@@ -23,62 +23,62 @@ log = logging.getLogger("ssdf")
 LOCK_NAME = "ssdf_exec_batch_from_id_lock"
 BATCH_LOCK_NAME = "ssdf_batch_id"
 
-# excls is a true exclusion here; the original df.exec_flow still has the inverted <@ condition
+# excls is a true exclusion here; the original ssdf.exec_flow still has the inverted <@ condition
 PLAN_START_SQL = """
 create temp table tmp_plan_list
 as
 select *
-from df.vw_flow_1
+from ssdf.vw_flow_1
 where (%(procs)s::varchar[] is null or process in (select unnest(%(procs)s::varchar[]))) and ((deps is null and %(start_ids)s::int[] is null)
         or id in (select unnest(%(start_ids)s::int[])))
-    and (%(excls)s::df.point[] is null or not (array[(dest, dest_tier_f)::df.point] <@ %(excls)s::df.point[]))
+    and (%(excls)s::ssdf.point[] is null or not (array[(dest, dest_tier_f)::ssdf.point] <@ %(excls)s::ssdf.point[]))
 """
 
 PLAN_NEXT_SQL = """
 insert into tmp_plan_list
 select f2.*
 from
-    (select array_agg((f.dest, f.dest_tier_f)::df.point) dests
+    (select array_agg((f.dest, f.dest_tier_f)::ssdf.point) dests
         from (select *, count(*) over (partition by dest, dest_tier_f) eff_cnt
             from tmp_plan_list) f
-        where (%(dests)s::df.point[] is null or not (array[(f.dest, f.dest_tier_f)::df.point] <@ %(dests)s::df.point[]))
+        where (%(dests)s::ssdf.point[] is null or not (array[(f.dest, f.dest_tier_f)::ssdf.point] <@ %(dests)s::ssdf.point[]))
             and (%(mode)s = 'full' or (%(mode)s = 'strict' and f.eff_cnt =
                 (select cnt from (select *, count(*) over (partition by dest, dest_tier_f) cnt
-                    from df.vw_flow_1 fr) fr
+                    from ssdf.vw_flow_1 fr) fr
                 where fr.id = f.id))
             )) fa
-    join df.vw_flow_1 f2
+    join ssdf.vw_flow_1 f2
         on (%(mode)s = 'strict' and (select array_agg(p) from (select unnest(fa.dests) p
                 union all
-                (select p from df.vw_dest_rep_dttm rd where %(use_rep_dttm)s and rd.dttm
-                    > (select dttm from df.vw_dest_rep_dttm rd2 where rd2.p = (f2.dest, f2.dest_tier_f)::df.point)))) @> f2.deps)
+                (select p from ssdf.vw_dest_rep_dttm rd where %(use_rep_dttm)s and rd.dttm
+                    > (select dttm from ssdf.vw_dest_rep_dttm rd2 where rd2.p = (f2.dest, f2.dest_tier_f)::ssdf.point)))) @> f2.deps)
             or (%(mode)s = 'full' and exists ((SELECT unnest(fa.dests)
                         union all
-                        (select p from df.vw_dest_rep_dttm rd where %(use_rep_dttm)s and rd.dttm
-                            > (select dttm from df.vw_dest_rep_dttm rd2 where rd2.p = (f2.dest, f2.dest_tier_f)::df.point)))
+                        (select p from ssdf.vw_dest_rep_dttm rd where %(use_rep_dttm)s and rd.dttm
+                            > (select dttm from ssdf.vw_dest_rep_dttm rd2 where rd2.p = (f2.dest, f2.dest_tier_f)::ssdf.point)))
                     INTERSECT
                     SELECT unnest(f2.deps)))
 where f2.id not in (select id from tmp_plan_list) and (%(procs)s::varchar[] is null or f2."process" in (select unnest(%(procs)s::varchar[])))
-    and (%(excls)s::df.point[] is null or not (array[(f2.dest, f2.dest_tier_f)::df.point] <@ %(excls)s::df.point[]))
+    and (%(excls)s::ssdf.point[] is null or not (array[(f2.dest, f2.dest_tier_f)::ssdf.point] <@ %(excls)s::ssdf.point[]))
 """
 
 PLAN_ORDER_SQL = """
 create temp table tmp_plan as
 select tmp_plan_list.id, v.vw_ordr, v.vw_ordr_max, v.priority
 from tmp_plan_list
-    join df.vw_flow v on v.id = tmp_plan_list.id
+    join ssdf.vw_flow v on v.id = tmp_plan_list.id
 """
 
 BATCH_INSERT_SQL = """
-insert into df.batch_log (id_batch, id, vw_ordr, vw_ordr_max, priority, LoadDate)
+insert into ssdf.batch_log (id_batch, id, vw_ordr, vw_ordr_max, priority, LoadDate)
 select %(batch)s, id, vw_ordr, vw_ordr_max, priority, CURRENT_TIMESTAMP
 from tmp_plan
 """
 
 UPDATE_EXECUTED_SQL = """
-UPDATE df.batch_log as b
+UPDATE ssdf.batch_log as b
 SET executed = l.executed
-FROM df.exec_log l
+FROM ssdf.exec_log l
 WHERE l.id_batch = %(batch)s and l.id = %(id)s and l.startdate = %(strt_dt)s
     AND b.id_batch = l.id_batch and b.id = l.id
 """
@@ -86,42 +86,42 @@ WHERE l.id_batch = %(batch)s and l.id = %(id)s and l.startdate = %(strt_dt)s
 EXCLUDE_NEXT_SQL = """
 insert into tmp_exclude
 select f2.id from
-    (select array_agg((f.dest, f.dest_tier_f)::df.point) dests from
-        (select distinct f.dest, f.dest_tier_f from df.batch_log as b
-            join df.vw_flow f
+    (select array_agg((f.dest, f.dest_tier_f)::ssdf.point) dests from
+        (select distinct f.dest, f.dest_tier_f from ssdf.batch_log as b
+            join ssdf.vw_flow f
                 on f.id = b.id
         where b.executed = 'error' and b.id_batch = %(batch)s
         union
         select distinct f.dest, f.dest_tier_f from tmp_exclude
-            join df.vw_flow f
+            join ssdf.vw_flow f
                 on f.id = tmp_exclude.id) f) f
-    join df.vw_flow f2
+    join ssdf.vw_flow f2
         on f2.deps && f.dests
-where f2.id in (select id from df.batch_log where id_batch = %(batch)s and executed is null)
+where f2.id in (select id from ssdf.batch_log where id_batch = %(batch)s and executed is null)
     and not exists (select 1 from tmp_exclude where tmp_exclude.id = f2.id)
     and ((%(mode)s = 'full' and (select array_agg(p) from (select unnest(f.dests) p
         union all
-        (select p from df.vw_dest_rep_dttm rd where %(use_rep_dttm)s and rd.dttm
-            <= (select dttm from df.vw_dest_rep_dttm rd2 where rd2.p = (f2.dest, f2.dest_tier_f)::df.point)))) @> f2.deps)
+        (select p from ssdf.vw_dest_rep_dttm rd where %(use_rep_dttm)s and rd.dttm
+            <= (select dttm from ssdf.vw_dest_rep_dttm rd2 where rd2.p = (f2.dest, f2.dest_tier_f)::ssdf.point)))) @> f2.deps)
     or (%(mode)s = 'strict'))
 """
 
 WAVE_BUSY_SQL = """
-select 1 from df.batch_log b2
+select 1 from ssdf.batch_log b2
 where b2.id_batch = %(batch)s and (b2.executed is null or b2.executed = 'running') and b2.enabled = true
-    and vw_ordr = (select vw_ordr from df.batch_log b where b.id_batch = %(batch)s and b.id = %(id)s)
+    and vw_ordr = (select vw_ordr from ssdf.batch_log b where b.id_batch = %(batch)s and b.id = %(id)s)
 """
 
 NEXT_ORDR_SQL = """
 select min(vw_ordr)
-from df.batch_log b2
+from ssdf.batch_log b2
 where b2.id_batch = %(batch)s and b2.executed is null and b2.enabled = true
-    and vw_ordr > (select vw_ordr from df.batch_log b where b.id_batch = %(batch)s and b.id = %(id)s)
+    and vw_ordr > (select vw_ordr from ssdf.batch_log b where b.id_batch = %(batch)s and b.id = %(id)s)
 """
 
 NEXT_WAVE_SQL = """
 create temp table tmp_next as
-select * from df.batch_log b where b.id_batch = %(batch)s and b.executed is null and b.enabled = true and vw_ordr <= %(ordr)s
+select * from ssdf.batch_log b where b.id_batch = %(batch)s and b.executed is null and b.enabled = true and vw_ordr <= %(ordr)s
 """
 
 NEXT_FILTER_SQL = """
@@ -143,7 +143,7 @@ select id from tmp_next b order by priority, vw_ordr, id limit 1 offset %(offs)s
 """
 
 CLAIM_SQL = """
-update df.batch_log
+update ssdf.batch_log
 set executed = 'running', startdate = CURRENT_TIMESTAMP
 where id_batch = %(batch)s and id = %(id)s
 """
@@ -164,7 +164,7 @@ def _point_array(points):
 
 
 def _dbg(cur, id_batch, id, msg):
-    cur.execute("insert into df.dbg select %s, %s, CURRENT_TIMESTAMP::text || %s", (id_batch, id, msg))
+    cur.execute("insert into ssdf.dbg select %s, %s, CURRENT_TIMESTAMP::text || %s", (id_batch, id, msg))
 
 
 class _Workers:
@@ -206,7 +206,7 @@ def exec_batch_from_id(conninfo, id_batch, id, mode, use_rep_dttm, workers):
         _dbg(cur, id_batch, id, " start")
 
         # outside the lock: this is what lets sibling points run in parallel
-        cur.execute("CALL df.exec_id(%s, %s, NULL)", (id_batch, id))
+        cur.execute("CALL ssdf.exec_id(%s, %s, NULL)", (id_batch, id))
         strt_dt = cur.fetchone()[0]
         log.info("batch %s point %s executed", id_batch, id)
 
@@ -215,7 +215,7 @@ def exec_batch_from_id(conninfo, id_batch, id, mode, use_rep_dttm, workers):
         try:
             cur.execute(UPDATE_EXECUTED_SQL, {**params, "strt_dt": strt_dt})
 
-            cur.execute("select executed from df.batch_log where id_batch = %(batch)s and id = %(id)s", params)
+            cur.execute("select executed from ssdf.batch_log where id_batch = %(batch)s and id = %(id)s", params)
             if cur.fetchone()[0] == "error":
                 cur.execute("create temp table tmp_exclude (id int)")
                 while True:
@@ -223,7 +223,7 @@ def exec_batch_from_id(conninfo, id_batch, id, mode, use_rep_dttm, workers):
                     if cur.rowcount == 0:
                         break
                 cur.execute("""
-                    update df.batch_log as b
+                    update ssdf.batch_log as b
                     set enabled = false
                     where id_batch = %(batch)s and id in (select id from tmp_exclude)
                 """, params)
@@ -234,7 +234,7 @@ def exec_batch_from_id(conninfo, id_batch, id, mode, use_rep_dttm, workers):
                 cur.execute(NEXT_ORDR_SQL, params)
                 ordr = cur.fetchone()[0]
                 if ordr is None:
-                    cur.execute("select vw_ordr from df.batch_log where id_batch = %(batch)s and id = %(id)s", params)
+                    cur.execute("select vw_ordr from ssdf.batch_log where id_batch = %(batch)s and id = %(id)s", params)
                     ordr = cur.fetchone()[0]
 
                 cur.execute(NEXT_WAVE_SQL, {**params, "ordr": ordr})
@@ -248,7 +248,7 @@ def exec_batch_from_id(conninfo, id_batch, id, mode, use_rep_dttm, workers):
                     if row is None:
                         break
                     curid = row[0]
-                    cur.execute("select df.get_for_resource(%s)", (curid,))
+                    cur.execute("select ssdf.get_for_resource(%s)", (curid,))
                     if cur.fetchone()[0]:
                         _dbg(cur, id_batch, id, " first " + str(curid))
                         _launch(cur, conninfo, id_batch, curid, mode, use_rep_dttm, workers)
@@ -256,11 +256,11 @@ def exec_batch_from_id(conninfo, id_batch, id, mode, use_rep_dttm, workers):
 
                 cur.execute("select id from tmp_next b order by priority, vw_ordr, id limit 1")
                 row = cur.fetchone()
-                cur.execute("select 1 from df.batch_log b where b.id_batch = %(batch)s and executed = 'running'", params)
+                cur.execute("select 1 from ssdf.batch_log b where b.id_batch = %(batch)s and executed = 'running'", params)
                 nothing_running = cur.fetchone() is None
                 if row is not None and nothing_running:
                     curid = row[0]
-                    cur.execute("call df.wait_for_resource(%s)", (curid,))
+                    cur.execute("call ssdf.wait_for_resource(%s)", (curid,))
                     _dbg(cur, id_batch, id, " second " + str(curid))
                     _launch(cur, conninfo, id_batch, curid, mode, use_rep_dttm, workers)
 
@@ -303,7 +303,7 @@ def exec_flow(conninfo, mode, procs=None, start_ids=None, dests=None, excls=None
         # after the plan insert, never held during point execution
         cur.execute("select pg_advisory_lock(hashtext(%s)::bigint)", (BATCH_LOCK_NAME,))
         try:
-            cur.execute("select coalesce(max(id_batch), 0::bigint) + 1 from df.batch_log")
+            cur.execute("select coalesce(max(id_batch), 0::bigint) + 1 from ssdf.batch_log")
             id_batch = cur.fetchone()[0]
             cur.execute(BATCH_INSERT_SQL, {**params, "batch": id_batch})
         finally:
@@ -321,10 +321,10 @@ def exec_flow(conninfo, mode, procs=None, start_ids=None, dests=None, excls=None
         first = True
         for (pid,) in cur.fetchall():
             if first:
-                cur.execute("call df.wait_for_resource(%s)", (pid,))
+                cur.execute("call ssdf.wait_for_resource(%s)", (pid,))
                 first = False
             else:
-                cur.execute("select df.get_for_resource(%s)", (pid,))
+                cur.execute("select ssdf.get_for_resource(%s)", (pid,))
                 if not cur.fetchone()[0]:
                     continue
             _launch(cur, conninfo, id_batch, pid, mode, use_rep_dttm, workers)
@@ -338,8 +338,8 @@ def exec_flow(conninfo, mode, procs=None, start_ids=None, dests=None, excls=None
         cur = conn.cursor()
         cur.execute("""
             select b.id, f.dest, b.executed, b.enabled
-            from df.batch_log b
-                join df.vw_flow f on f.id = b.id
+            from ssdf.batch_log b
+                join ssdf.vw_flow f on f.id = b.id
             where b.id_batch = %s
             order by b.vw_ordr, b.priority, b.id
         """, (id_batch,))

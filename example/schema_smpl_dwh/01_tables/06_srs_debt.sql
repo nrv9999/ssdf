@@ -1,0 +1,8 @@
+DROP TABLE IF EXISTS smpl_dwh.srs_debt CASCADE;
+
+CREATE TABLE smpl_dwh.srs_debt (
+    id_batch BIGINT NOT NULL,
+    LoadDate TIMESTAMP NOT NULL,
+    id BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
+    source_id BIGINT NOT NULL
+);
