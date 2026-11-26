@@ -21,6 +21,8 @@ psql -d demo -f install.sql
 ```
 Notice: probably you will need provide special authorization to psql, by options or other way.
 
+Uninstall SQL: `example/uninstall.sql` first (removes the example flow/horizon rows and drops `dwh`), then `framework/uninstall.sql` (drops `df` — all logs and history go with it, irreversible).
+
 **Python launcher** - `install.sh` puts executable `.py` scripts into `/opt/ssdf` (they carry a `#!/usr/bin/env python3` shebang and the exec bit, so they run directly, no wrappers). It does not touch the database.
 ```
 chmod +x install.sh           # make the installer executable
