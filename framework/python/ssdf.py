@@ -21,6 +21,7 @@ import psycopg
 log = logging.getLogger("ssdf")
 
 LOCK_NAME = "ssdf_exec_batch_from_id_lock"
+BATCH_LOCK_NAME = "ssdf_batch_id"
 
 # excls is a true exclusion here; the original df.exec_flow still has the inverted <@ condition
 PLAN_START_SQL = """
@@ -298,9 +299,15 @@ def exec_flow(conninfo, mode, procs=None, start_ids=None, dests=None, excls=None
 
         cur.execute(PLAN_ORDER_SQL)
 
-        cur.execute("select coalesce(max(id_batch), 0::bigint) + 1 from df.batch_log")
-        id_batch = cur.fetchone()[0]
-        cur.execute(BATCH_INSERT_SQL, {**params, "batch": id_batch})
+        # parallel dispatchers must not pick the same max+1; released right
+        # after the plan insert, never held during point execution
+        cur.execute("select pg_advisory_lock(hashtext(%s)::bigint)", (BATCH_LOCK_NAME,))
+        try:
+            cur.execute("select coalesce(max(id_batch), 0::bigint) + 1 from df.batch_log")
+            id_batch = cur.fetchone()[0]
+            cur.execute(BATCH_INSERT_SQL, {**params, "batch": id_batch})
+        finally:
+            cur.execute("select pg_advisory_unlock(hashtext(%s)::bigint)", (BATCH_LOCK_NAME,))
 
         cur.execute("select id, vw_ordr from tmp_plan order by vw_ordr, priority")
         for pid, ordr in cur.fetchall():
