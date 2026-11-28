@@ -63,7 +63,7 @@ def close_running(conn, nums):
 
 def main():
     p = argparse.ArgumentParser(description="Закрытие зависших running-точек (system fault)")
-    p.add_argument("--dbname", default="demo")
+    p.add_argument("--dbname", required=True)
     p.add_argument("--host")
     p.add_argument("--port", type=int)
     p.add_argument("--user")

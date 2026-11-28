@@ -16,6 +16,7 @@
 \i schema_ssdf/02_tables/05_exec_log.sql
 \i schema_ssdf/02_tables/06_batch_log.sql
 \i schema_ssdf/02_tables/07_dbg.sql
+\i schema_ssdf/02_tables/08_setting.sql
 
 \echo Installing views...
 \i schema_ssdf/03_views/01_vw_flow_1.sql
@@ -27,7 +28,7 @@
 \i schema_ssdf/04_functions/01_get_for_resource.sql
 \i schema_ssdf/04_functions/03_list_running.sql
 \i schema_ssdf/04_functions/04_close_running.sql
--- 02_find_free_job lives in 04_functions/!ARCHIVE: cron-slot machinery of the archived SQL execution path
+\i schema_ssdf/04_functions/05_get_dbname.sql
 
 \echo Installing procedures...
 \i schema_ssdf/05_procedures/01_exec_id.sql

@@ -360,14 +360,14 @@ def _parse_points(values):
 
 
 def main():
-    p = argparse.ArgumentParser(description="SSDF data flow dispatcher (client threads instead of pg_cron)")
+    p = argparse.ArgumentParser(description="SSDF data flow dispatcher")
     p.add_argument("--mode", required=True, choices=("full", "strict"))
     p.add_argument("--procs", nargs="+", help="process names to limit the flow")
     p.add_argument("--start-ids", nargs="+", type=int, help="flow point ids to start from")
     p.add_argument("--dests", nargs="+", metavar="NAME:TIER", help="destinations not to generate the flow after")
     p.add_argument("--excls", nargs="+", metavar="NAME:TIER", help="points to exclude")
     p.add_argument("--no-rep-dttm", action="store_true", help="do not use rep dates for dependency calculation")
-    p.add_argument("--dbname", default="demo")
+    p.add_argument("--dbname", required=True)
     p.add_argument("--host")
     p.add_argument("--port", type=int)
     p.add_argument("--user")
